@@ -49,7 +49,7 @@ jobs:
         run: |
           $manifest = "HoobiBitwardenCommandPaletteExtension\Package.appxmanifest"
           (Get-Content $manifest -Raw) -replace 'Version="[\d.]+"', "Version=`"$env:APP_VERSION`"" |
-            Set-Content $manifest -NoNewline
+            Set-Content $manifest -NoNewline -Encoding utf8NoBOM
 
       - name: Restore
         run: dotnet restore -p:Platform=${{ matrix.platform }}
