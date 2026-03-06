@@ -17,12 +17,14 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     private IListItem[] _currentItems = [];
     private bool _initialized;
     private string _currentSearchText = string.Empty;
+    private string? _errorMessage;
 
     public HoobiBitwardenCommandPaletteExtensionPage(BitwardenCliService service, BitwardenSettingsManager? settings = null)
     {
         _service = service;
         _settings = settings;
         _service.CacheUpdated += OnCacheUpdated;
+        _service.StatusChanged += OnStatusChanged;
         Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png");
         Title = "Bitwarden";
         Name = "Open";
@@ -68,38 +70,100 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         IsLoading = false;
     }
 
+    private void OnStatusChanged()
+    {
+        _initialized = false;
+        _currentItems = [];
+        RaiseItemsChanged();
+    }
+
     private async Task InitializeAsync()
     {
         IsLoading = true;
 
-        var unlocked = await _service.CheckStatusAsync();
-        if (!unlocked)
+        var status = await _service.GetVaultStatusAsync();
+        switch (status)
         {
-            _currentItems = [BuildUnlockItem()];
-            RaiseItemsChanged();
-            IsLoading = false;
-            return;
+            case VaultStatus.CliNotFound:
+                _currentItems = BuildCliNotFoundItems();
+                break;
+            case VaultStatus.Unauthenticated:
+                _currentItems = BuildUnauthenticatedItems();
+                break;
+            case VaultStatus.Locked:
+                _currentItems = BuildLockedItems();
+                break;
+            case VaultStatus.Unlocked:
+                await _service.RefreshCacheAsync();
+                _currentItems = BuildListItems(_service.SearchCached(null));
+                break;
         }
 
-        await _service.RefreshCacheAsync();
-        _currentItems = BuildListItems(_service.SearchCached(null));
         RaiseItemsChanged();
         IsLoading = false;
     }
 
-    private ListItem BuildUnlockItem() => new(new Pages.UnlockVaultPage(_service, _settings))
+    private static IListItem[] BuildCliNotFoundItems() =>
+    [
+        new ListItem(new OpenUrlCommand("https://bitwarden.com/help/cli/#download-and-install"))
+        {
+            Title = "Bitwarden CLI not found",
+            Subtitle = "Install the Bitwarden CLI (bw) and ensure it's in your PATH",
+            Icon = new IconInfo("\uE783"),
+        },
+    ];
+
+    private IListItem[] BuildUnauthenticatedItems() =>
+    [
+        new ListItem(new Pages.LoginPage(_service, _settings, OnLoginSubmitted))
+        {
+            Title = "Login to Bitwarden",
+            Subtitle = _errorMessage ?? "Sign in with your email and master password",
+            Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png"),
+        },
+        BuildSetServerItem(),
+    ];
+
+    private IListItem[] BuildLockedItems() =>
+    [
+        BuildUnlockItem(),
+        BuildSetServerItem(),
+        BuildLogoutItem(),
+    ];
+
+    private ListItem BuildUnlockItem() => new(new Pages.UnlockVaultPage(_service, _settings, OnUnlockSubmitted))
     {
         Title = "Vault is locked",
-        Subtitle = "Click to unlock your Bitwarden vault",
-        Icon = new IconInfo("\uE72E"),
+        Subtitle = _errorMessage ?? "Click to unlock your Bitwarden vault",
+        Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png"),
+    };
+
+    private ListItem BuildSetServerItem() => new(new Pages.SetServerPage(_service))
+    {
+        Title = "Set Bitwarden Server",
+        Subtitle = BitwardenCliService.ServerUrl ?? "https://vault.bitwarden.com",
+        Icon = new IconInfo("\uE774"),
+    };
+
+    private ListItem BuildLogoutItem() => new(new Commands.LogoutCommand(_service))
+    {
+        Title = "Bitwarden Logout",
+        Subtitle = "Log out and clear session",
+        Icon = new IconInfo("\uEA56"),
     };
 
     private IListItem[] BuildListItems(List<BitwardenItem> items)
     {
-        if (items.Count == 0)
-            return [new ListItem(new NoOpCommand()) { Title = "No results found" }];
+        var list = new List<IListItem>();
 
-        return items.Select(BuildListItem).ToArray();
+        if (items.Count == 0)
+            list.Add(new ListItem(new NoOpCommand()) { Title = "No results found" });
+        else
+            list.AddRange(items.Select(BuildListItem));
+
+        list.Add(BuildSetServerItem());
+        list.Add(BuildLogoutItem());
+        return list.ToArray();
     }
 
     private IListItem BuildListItem(BitwardenItem item) => new ListItem(VaultItemHelper.GetDefaultCommand(item))
@@ -110,5 +174,65 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         MoreCommands = VaultItemHelper.BuildContextItems(item),
     };
 
-    public void Dispose() => _service.CacheUpdated -= OnCacheUpdated;
+    public void Dispose()
+    {
+        _service.CacheUpdated -= OnCacheUpdated;
+        _service.StatusChanged -= OnStatusChanged;
+    }
+
+    private void OnUnlockSubmitted(string password)
+    {
+        _errorMessage = null;
+        _currentItems = [];
+        IsLoading = true;
+        RaiseItemsChanged();
+
+        _ = Task.Run(async () =>
+        {
+            var (success, error) = await _service.UnlockAsync(password);
+            if (!success)
+            {
+                _errorMessage = error ?? "Unlock failed";
+                _currentItems = BuildLockedItems();
+                RaiseItemsChanged();
+                IsLoading = false;
+                return;
+            }
+
+            await _service.RefreshCacheAsync();
+            _currentItems = BuildListItems(_service.SearchCached(null));
+            RaiseItemsChanged();
+            IsLoading = false;
+        });
+    }
+
+    private void OnLoginSubmitted(string email, string password, string? twoFactorCode)
+    {
+        _errorMessage = null;
+        _currentItems = [];
+        IsLoading = true;
+        RaiseItemsChanged();
+
+        _ = Task.Run(async () =>
+        {
+            var (success, error, twoFactorRequired) = await _service.LoginAsync(email, password, twoFactorCode);
+            if (!success)
+            {
+                if (twoFactorRequired && string.IsNullOrEmpty(twoFactorCode))
+                    _errorMessage = "Two-factor authentication required - enter your 2FA code";
+                else
+                    _errorMessage = error ?? "Login failed";
+
+                _currentItems = BuildUnauthenticatedItems();
+                RaiseItemsChanged();
+                IsLoading = false;
+                return;
+            }
+
+            await _service.RefreshCacheAsync();
+            _currentItems = BuildListItems(_service.SearchCached(null));
+            RaiseItemsChanged();
+            IsLoading = false;
+        });
+    }
 }

@@ -1,18 +1,20 @@
 # Hoobi Bitwarden Command Palette Extension
 
-A Windows Command Palette extension that integrates your Bitwarden vault directly into the Windows Command Palette, enabling fast credential search, copy, and launch — without leaving what you're doing.
+A Windows Command Palette extension that integrates your Bitwarden vault directly into the Windows Command Palette, enabling fast credential search, copy, and launch: without leaving what you're doing.
+
+![Preview](preview.png)
 
 ## Features
 
-- **Vault search** — search all vault items (logins, secure notes, cards, identities, SSH keys) directly from the Command Palette
-- **Fallback search** — type anywhere in the Command Palette and Bitwarden results appear as fallback suggestions
-- **Copy credentials** — copy usernames, passwords, TOTP codes, card numbers, SSH keys, and more via context menu
-- **Open in browser** — launch login URIs directly from search results
-- **Open in Bitwarden** — jump to any item in the Bitwarden desktop app or web vault
-- **SSH quick-connect** — open SSH sessions from SSH key items with a configured `host` custom field
-- **Remember session** — optionally persist your session key in Windows Credential Manager across launches
-- **Smart sorting** — recently accessed items appear first, with relevance-based search ranking
-- **Background cache** — vault is cached locally and refreshed every 5 minutes for instant results
+- **Vault search**: search all vault items (logins, secure notes, cards, identities, SSH keys) directly from the Command Palette
+- **Fallback search**: type anywhere in the Command Palette and Bitwarden results appear as fallback suggestions
+- **Copy credentials**: copy usernames, passwords, TOTP codes, card numbers, SSH keys, and more via context menu
+- **Open in browser**: launch login URIs directly from search results
+- **Open in Bitwarden**: jump to any item in the Bitwarden desktop app or web vault
+- **SSH quick-connect**: open SSH sessions from SSH key items with a configured `host` custom field
+- **Remember session**: optionally persist your session key in Windows Credential Manager across launches
+- **Smart sorting**: recently accessed items appear first, with relevance-based search ranking
+- **Background cache**: vault is cached locally and refreshed every 5 minutes for instant results
 
 ## Prerequisites
 
@@ -29,7 +31,7 @@ A Windows Command Palette extension that integrates your Bitwarden vault directl
    ```powershell
    Add-AppxPackage -Path .\HoobiBitwardenCommandPaletteExtension_x64.msix
    ```
-3. Open the Command Palette — the Bitwarden extension will be available
+3. Open the Command Palette: the Bitwarden extension will be available
 
 ### From Source
 
@@ -51,10 +53,10 @@ dotnet run -p:Platform=x64
 ## Usage
 
 1. **Open Command Palette** (default: `Win + Ctrl + Space`)
-2. **Type "Bitwarden"** to open the vault browser, or just start typing any search term — matching vault items appear as fallback results
-3. **First launch** — if your vault is locked, you'll be prompted to enter your master password
-4. **Browse results** — click an item to execute its default action (open URL for logins, open in Bitwarden for others)
-5. **Context menu** — right-click or use keyboard shortcuts for item-specific actions:
+2. **Type "Bitwarden"** to open the vault browser, or just start typing any search term: matching vault items appear as fallback results
+3. **First launch**: if your vault is locked, you'll be prompted to enter your master password
+4. **Browse results**: click an item to execute its default action (open URL for logins, open in Bitwarden for others)
+5. **Context menu**: right-click or use keyboard shortcuts for item-specific actions:
 
 | Item Type    | Available Actions                                                        |
 |-------------|--------------------------------------------------------------------------|
@@ -68,7 +70,7 @@ dotnet run -p:Platform=x64
 
 Access extension settings through the Command Palette settings:
 
-- **Remember Session** — stores your Bitwarden session key in Windows Credential Manager so you don't need to unlock on each launch
+- **Remember Session**: stores your Bitwarden session key in Windows Credential Manager so you don't need to unlock on each launch
 
 ### SSH Quick-Connect
 

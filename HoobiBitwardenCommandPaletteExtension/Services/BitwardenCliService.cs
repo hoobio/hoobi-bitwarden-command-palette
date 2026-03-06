@@ -10,6 +10,8 @@ using HoobiBitwardenCommandPaletteExtension.Models;
 
 namespace HoobiBitwardenCommandPaletteExtension.Services;
 
+internal enum VaultStatus { Unlocked, Locked, Unauthenticated, CliNotFound }
+
 internal sealed class BitwardenCliService
 {
   private readonly BitwardenSettingsManager? _settings;
@@ -29,6 +31,7 @@ internal sealed class BitwardenCliService
   internal static string? ServerUrl { get; private set; }
 
   public event Action? CacheUpdated;
+  public event Action? StatusChanged;
 
   public BitwardenCliService(BitwardenSettingsManager? settings = null)
   {
@@ -47,72 +50,129 @@ internal sealed class BitwardenCliService
     }
   }
 
-  public async Task<bool> CheckStatusAsync()
+  public async Task<VaultStatus> GetVaultStatusAsync()
   {
-    if (_sessionKey != null)
-    {
-      _ = Task.Run(FetchServerUrlAsync);
-      return true;
-    }
+    if (!IsCliAvailable())
+      return VaultStatus.CliNotFound;
+
+    if (_sessionKey != null && await VerifySessionAsync())
+      return VaultStatus.Unlocked;
 
     var envSession = Environment.GetEnvironmentVariable("BW_SESSION");
     if (!string.IsNullOrWhiteSpace(envSession))
     {
       _sessionKey = envSession;
-      _ = Task.Run(FetchServerUrlAsync);
-      return true;
+      if (await VerifySessionAsync())
+        return VaultStatus.Unlocked;
     }
 
-    if (_settings?.RememberSession.Value != true)
-      return false;
+    if (_settings?.RememberSession.Value == true)
+    {
+      var stored = SessionStore.Load();
+      if (!string.IsNullOrEmpty(stored))
+      {
+        _sessionKey = stored;
+        if (await VerifySessionAsync())
+          return VaultStatus.Unlocked;
+        SessionStore.Clear();
+      }
+    }
 
-    var stored = SessionStore.Load();
-    if (string.IsNullOrEmpty(stored))
-      return false;
+    return await FetchStatusAsync();
+  }
 
-    _sessionKey = stored;
+  private static bool IsCliAvailable()
+  {
+    try
+    {
+      using var process = Process.Start(new ProcessStartInfo("bw", "--version")
+      {
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true,
+      })!;
+      process.WaitForExit(5000);
+      return process.ExitCode == 0;
+    }
+    catch
+    {
+      return false;
+    }
+  }
+
+  private async Task<bool> VerifySessionAsync()
+  {
+    try
+    {
+      using var process = StartProcess("sync");
+      await process.StandardOutput.ReadToEndAsync();
+      await process.WaitForExitAsync();
+      if (process.ExitCode == 0)
+      {
+        await FetchServerUrlAsync();
+        return true;
+      }
+    }
+    catch { }
+    _sessionKey = null;
+    return false;
+  }
+
+  private async Task<VaultStatus> FetchStatusAsync()
+  {
     try
     {
       var output = await RunCliAsync("status");
       var json = JsonNode.Parse(output);
-      var status = json?["status"]?.GetValue<string>();
       ServerUrl ??= json?["serverUrl"]?.GetValue<string>()?.TrimEnd('/');
-      if (status == "unlocked")
-        return true;
-    }
-    catch { }
-
-    _sessionKey = null;
-    SessionStore.Clear();
-    return false;
-  }
-
-  public async Task<string?> UnlockAsync(string masterPassword)
-  {
-    try
-    {
-      var output = await RunCliWithStdinAsync("unlock --raw", masterPassword);
-      var key = output.Trim();
-      if (!string.IsNullOrEmpty(key))
-      {
-        _sessionKey = key;
-
-        if (_settings?.RememberSession.Value == true)
-          SessionStore.Save(key);
-
-        _ = Task.Run(async () =>
-        {
-          await FetchServerUrlAsync();
-          await RefreshCacheAsync();
-        });
-        return key;
-      }
-
-      return null;
+      return json?["status"]?.GetValue<string>() == "unauthenticated"
+          ? VaultStatus.Unauthenticated
+          : VaultStatus.Locked;
     }
     catch
     {
-      return null;
+      return VaultStatus.Locked;
+    }
+  }
+
+  public async Task<(bool Success, string? Error)> UnlockAsync(string masterPassword)
+  {
+    try
+    {
+      var psi = new ProcessStartInfo("bw", "unlock --passwordenv BW_MP --raw")
+      {
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true,
+      };
+
+      psi.Environment["BW_MP"] = masterPassword;
+      if (_sessionKey != null)
+        psi.Environment["BW_SESSION"] = _sessionKey;
+
+      using var process = Process.Start(psi)!;
+      var stdout = await process.StandardOutput.ReadToEndAsync();
+      var stderr = await process.StandardError.ReadToEndAsync();
+      await process.WaitForExitAsync();
+
+      var key = stdout.Trim();
+      if (process.ExitCode == 0 && !string.IsNullOrEmpty(key))
+      {
+        _sessionKey = key;
+        if (_settings?.RememberSession.Value == true)
+          SessionStore.Save(key);
+        StatusChanged?.Invoke();
+        return (true, null);
+      }
+
+      var error = stderr.Trim();
+      return (false, string.IsNullOrEmpty(error) ? "Unlock failed" : error);
+    }
+    catch (Exception ex)
+    {
+      return (false, ex.Message);
     }
   }
 
@@ -129,6 +189,94 @@ internal sealed class BitwardenCliService
         ServerUrl = url;
     }
     catch { }
+  }
+
+  public async Task<(bool Success, string? Error, bool TwoFactorRequired)> LoginAsync(string email, string password, string? twoFactorCode = null, int? twoFactorMethod = null)
+  {
+    try
+    {
+      var args = $"login \"{email}\" --passwordenv BW_MP";
+      if (!string.IsNullOrEmpty(twoFactorCode))
+        args += $" --method {twoFactorMethod ?? 0} --code \"{twoFactorCode}\"";
+      args += " --raw";
+
+      var psi = new ProcessStartInfo("bw", args)
+      {
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        RedirectStandardInput = true,
+        CreateNoWindow = true,
+      };
+
+      psi.Environment["BW_MP"] = password;
+
+      using var process = Process.Start(psi)!;
+      process.StandardInput.Close();
+
+      var stdoutTask = process.StandardOutput.ReadToEndAsync();
+      var (stderr, twoFactorDetected) = await ReadStderrWithTwoFactorDetectionAsync(process);
+
+      if (twoFactorDetected)
+      {
+        try { process.Kill(); } catch { }
+        return (false, "Two-factor authentication required - enter your 2FA code", true);
+      }
+
+      await process.WaitForExitAsync();
+
+      var key = (await stdoutTask).Trim();
+      if (process.ExitCode == 0 && !string.IsNullOrEmpty(key))
+      {
+        _sessionKey = key;
+        if (_settings?.RememberSession.Value == true)
+          SessionStore.Save(key);
+        StatusChanged?.Invoke();
+        return (true, null, false);
+      }
+
+      var error = stderr.Trim();
+      var needs2fa = error.Contains("Two-step", StringComparison.OrdinalIgnoreCase)
+          || error.Contains("two-factor", StringComparison.OrdinalIgnoreCase);
+
+      return (false, string.IsNullOrEmpty(error) ? "Login failed" : error, needs2fa);
+    }
+    catch (Exception ex)
+    {
+      return (false, ex.Message, false);
+    }
+  }
+
+  public async Task LogoutAsync()
+  {
+    try { await RunCliAsync("logout"); } catch { }
+    _sessionKey = null;
+    lock (_cacheLock)
+    {
+      _cache = [];
+      _cacheLoaded = false;
+    }
+    SessionStore.Clear();
+    ServerUrl = null;
+    StatusChanged?.Invoke();
+  }
+
+  public async Task<string?> SetServerUrlAsync(string url)
+  {
+    using var process = StartProcess($"config server \"{url}\"");
+    var stdout = await process.StandardOutput.ReadToEndAsync();
+    var stderr = await process.StandardError.ReadToEndAsync();
+    await process.WaitForExitAsync();
+
+    if (process.ExitCode == 0)
+    {
+      ServerUrl = url.TrimEnd('/');
+      StatusChanged?.Invoke();
+      return null;
+    }
+
+    var error = stderr.Trim();
+    return string.IsNullOrEmpty(error) ? "Failed to set server URL" : error;
   }
 
   public List<BitwardenItem> SearchCached(string? query = null)
@@ -177,7 +325,7 @@ internal sealed class BitwardenCliService
     }
     catch
     {
-      // Refresh failed — keep existing cache
+      // Refresh failed: keep existing cache
     }
     finally
     {
@@ -233,6 +381,21 @@ internal sealed class BitwardenCliService
       psi.Environment["BW_SESSION"] = _sessionKey;
 
     return Process.Start(psi)!;
+  }
+
+  private static async Task<(string Content, bool TwoFactorDetected)> ReadStderrWithTwoFactorDetectionAsync(Process process)
+  {
+    var sb = new System.Text.StringBuilder();
+    var buffer = new char[256];
+    while (true)
+    {
+      var count = await process.StandardError.ReadAsync(buffer.AsMemory());
+      if (count == 0) break;
+      sb.Append(buffer, 0, count);
+      if (sb.ToString().Contains("Two-step", StringComparison.OrdinalIgnoreCase))
+        return (sb.ToString(), true);
+    }
+    return (sb.ToString(), false);
   }
 
   private async Task<string> RunCliAsync(string args)

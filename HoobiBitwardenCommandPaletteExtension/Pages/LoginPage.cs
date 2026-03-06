@@ -1,33 +1,33 @@
 using System;
+using System.Text.Json.Nodes;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
-using System.Text.Json.Nodes;
 using HoobiBitwardenCommandPaletteExtension.Services;
 
 namespace HoobiBitwardenCommandPaletteExtension.Pages;
 
-internal sealed partial class UnlockVaultPage : ContentPage
+internal sealed partial class LoginPage : ContentPage
 {
-  private readonly UnlockForm _form;
+  private readonly LoginForm _form;
 
-  public UnlockVaultPage(BitwardenCliService service, BitwardenSettingsManager? settings = null, Action<string>? onSubmit = null)
+  public LoginPage(BitwardenCliService service, BitwardenSettingsManager? settings = null, Action<string, string, string?>? onSubmit = null)
   {
-    Name = "Unlock";
-    Title = "Unlock Bitwarden Vault";
+    Name = "Login";
+    Title = "Login to Bitwarden";
     Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png");
-    _form = new UnlockForm(service, settings, onSubmit);
+    _form = new LoginForm(service, settings, onSubmit);
   }
 
   public override IContent[] GetContent() => [_form];
 }
 
-internal sealed partial class UnlockForm : FormContent
+internal sealed partial class LoginForm : FormContent
 {
   private readonly BitwardenCliService _service;
   private readonly BitwardenSettingsManager? _settings;
-  private readonly Action<string>? _onSubmit;
+  private readonly Action<string, string, string?>? _onSubmit;
 
-  private string BuildFormTemplate()
+  private string BuildTemplate()
   {
     var rememberChecked = _settings?.RememberSession.Value == true;
     return $$"""
@@ -40,10 +40,19 @@ internal sealed partial class UnlockForm : FormContent
                 "type": "TextBlock",
                 "size": "medium",
                 "weight": "bolder",
-                "text": "Unlock your Bitwarden vault",
+                "text": "Login to Bitwarden",
                 "horizontalAlignment": "center",
                 "wrap": true,
                 "style": "heading"
+            },
+            {
+                "type": "Input.Text",
+                "label": "Email",
+                "id": "Email",
+                "isRequired": true,
+                "errorMessage": "Email is required",
+                "placeholder": "your@email.com",
+                "style": "Email"
             },
             {
                 "type": "Input.Text",
@@ -55,8 +64,14 @@ internal sealed partial class UnlockForm : FormContent
                 "placeholder": "Enter your master password"
             },
             {
+                "type": "Input.Text",
+                "label": "Two-Factor Code (optional)",
+                "id": "TwoFactorCode",
+                "placeholder": "6-digit code from your authenticator app"
+            },
+            {
                 "type": "TextBlock",
-                "text": "Click the Unlock button. Enter is not supported in password fields",
+                "text": "Click the Login button. Enter is not supported in password fields",
                 "size": "small",
                 "isSubtle": true,
                 "wrap": true
@@ -73,34 +88,39 @@ internal sealed partial class UnlockForm : FormContent
         "actions": [
             {
                 "type": "Action.Submit",
-                "title": "Unlock"
+                "title": "Login"
             }
         ]
     }
     """;
   }
 
-  public UnlockForm(BitwardenCliService service, BitwardenSettingsManager? settings = null, Action<string>? onSubmit = null)
+  public LoginForm(BitwardenCliService service, BitwardenSettingsManager? settings = null, Action<string, string, string?>? onSubmit = null)
   {
     _service = service;
     _settings = settings;
     _onSubmit = onSubmit;
-    TemplateJson = BuildFormTemplate();
+    TemplateJson = BuildTemplate();
   }
 
   public override ICommandResult SubmitForm(string inputs, string data)
   {
     var formInput = JsonNode.Parse(inputs)?.AsObject();
+    var email = formInput?["Email"]?.GetValue<string>()?.Trim();
     var password = formInput?["MasterPassword"]?.GetValue<string>();
 
-    if (string.IsNullOrEmpty(password))
+    if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
       return CommandResult.KeepOpen();
+
+    var twoFactorCode = formInput?["TwoFactorCode"]?.GetValue<string>()?.Trim();
+    if (string.IsNullOrEmpty(twoFactorCode))
+      twoFactorCode = null;
 
     var remember = formInput?["RememberSession"]?.GetValue<string>() == "true";
     if (_settings != null && _settings.RememberSession.Value != remember)
       _settings.RememberSession.Value = remember;
 
-    _onSubmit?.Invoke(password);
+    _onSubmit?.Invoke(email, password, twoFactorCode);
     return CommandResult.GoBack();
   }
 }
