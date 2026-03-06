@@ -27,11 +27,17 @@ A Windows Command Palette extension that integrates your Bitwarden vault directl
 ### From Release
 
 1. Download the `.msix` package for your architecture (x64 or ARM64) from [Releases](../../releases)
-2. Double-click the `.msix` to install, or use PowerShell:
+2. Download and install the signing certificate ([`HoobiBitwardenCommandPaletteExtension.cer`](HoobiBitwardenCommandPaletteExtension.cer)) to the **Trusted People** store:
+   - Double-click the `.cer` file → **Install Certificate** → **Local Machine** → **Place all certificates in the following store** → **Trusted People** → Finish
+   - Or via PowerShell (admin):
+     ```powershell
+     Import-Certificate -FilePath .\HoobiBitwardenCommandPaletteExtension.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+     ```
+3. Double-click the `.msix` to install, or use PowerShell:
    ```powershell
    Add-AppxPackage -Path .\HoobiBitwardenCommandPaletteExtension_x64.msix
    ```
-3. Open the Command Palette: the Bitwarden extension will be available
+4. Open the Command Palette: the Bitwarden extension will be available
 
 ### From Source
 
