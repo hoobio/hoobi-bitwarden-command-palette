@@ -47,9 +47,9 @@ jobs:
       - name: Stamp Package.appxmanifest version
         shell: pwsh
         run: |
-          $manifest = "HoobiBitwardenCommandPaletteExtension\Package.appxmanifest"
-          (Get-Content $manifest -Raw) -replace 'Version="[\d.]+"', "Version=`"$env:APP_VERSION`"" |
-            Set-Content $manifest -NoNewline -Encoding utf8NoBOM
+          $manifest = Resolve-Path "HoobiBitwardenCommandPaletteExtension\Package.appxmanifest"
+          $content = [System.IO.File]::ReadAllText($manifest) -replace 'Version="[\d.]+"', "Version=`"$env:APP_VERSION`""
+          [System.IO.File]::WriteAllText($manifest, $content, [System.Text.UTF8Encoding]::new($false))
 
       - name: Restore
         run: dotnet restore -p:Platform=${{ matrix.platform }}
