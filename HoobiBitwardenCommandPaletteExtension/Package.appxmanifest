@@ -9,7 +9,7 @@
   IgnorableNamespaces="uap uap3 rescap">
 
   <Identity
-    Name="HoobiBitwardenCommandPaletteExtenstion"
+    Name="HoobiBitwardenCommandPaletteExtension"
     Publisher="CN=hoobio"
     Version="0.0.1.0" />
   <!-- When you're ready to publish your extension, you'll need to change the
@@ -46,7 +46,7 @@
       <Extensions>
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:ExeServer Executable="HoobiBitwardenCommandPaletteExtenstion.exe" Arguments="-RegisterProcessAsComServer" DisplayName="Bitwarden Command Palette Extension">
+            <com:ExeServer Executable="HoobiBitwardenCommandPaletteExtension.exe" Arguments="-RegisterProcessAsComServer" DisplayName="Bitwarden Command Palette Extension">
               <com:Class Id="8345c10d-0df8-4116-a767-3f8647adf4df" DisplayName="Bitwarden Command Palette Extension" />
             </com:ExeServer>
           </com:ComServer>
