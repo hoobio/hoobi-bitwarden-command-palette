@@ -5,6 +5,17 @@
     System.Security.Permissions v8.0.0.0 but doesn't ship it alongside itself.
     Copy it into the task folder before the manifest validation target runs.
   -->
+  <Target Name="StampManifestVersion"
+          BeforeTargets="Build"
+          Condition="'$(MSBuildProjectName)' == 'HoobiBitwardenCommandPaletteExtension'">
+    <PropertyGroup>
+      <AppVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)version.txt').Trim()).0</AppVersion>
+    </PropertyGroup>
+    <XmlPoke XmlInputPath="$(MSBuildProjectDirectory)/Package.appxmanifest"
+             Query="//*[local-name()='Identity']/@Version"
+             Value="$(AppVersion)" />
+  </Target>
+
   <Target Name="FixMsixBuildToolsSystemSecurityPermissions"
           BeforeTargets="_ValidatePresenceOfAppxManifestItems"
           Condition="'$(MSBuildRuntimeType)' == 'Core'">
