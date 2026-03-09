@@ -74,16 +74,42 @@ internal static partial class SecureClipboardService
       EmptyClipboard();
 
       var bytes = System.Text.Encoding.Unicode.GetBytes(text + "\0");
-      var hGlobal = Marshal.AllocHGlobal(bytes.Length);
-      Marshal.Copy(bytes, 0, hGlobal, bytes.Length);
-      SetClipboardData(CF_UNICODETEXT, hGlobal);
+      var hGlobal = GlobalAlloc(GMEM_MOVEABLE, (nuint)bytes.Length);
+      if (hGlobal == nint.Zero)
+        return;
+
+      var ptr = GlobalLock(hGlobal);
+      if (ptr == nint.Zero)
+      {
+        GlobalFree(hGlobal);
+        return;
+      }
+
+      Marshal.Copy(bytes, 0, ptr, bytes.Length);
+      GlobalUnlock(hGlobal);
+
+      if (SetClipboardData(CF_UNICODETEXT, hGlobal) == nint.Zero)
+        GlobalFree(hGlobal);
 
       var excludeFormat = RegisterClipboardFormatW("ExcludeClipboardContentFromMonitorProcessing");
       if (excludeFormat != 0)
       {
-        var hFlag = Marshal.AllocHGlobal(sizeof(int));
-        Marshal.WriteInt32(hFlag, 1);
-        SetClipboardData(excludeFormat, hFlag);
+        var hFlag = GlobalAlloc(GMEM_MOVEABLE, (nuint)sizeof(int));
+        if (hFlag != nint.Zero)
+        {
+          var flagPtr = GlobalLock(hFlag);
+          if (flagPtr != nint.Zero)
+          {
+            Marshal.WriteInt32(flagPtr, 1);
+            GlobalUnlock(hFlag);
+            if (SetClipboardData(excludeFormat, hFlag) == nint.Zero)
+              GlobalFree(hFlag);
+          }
+          else
+          {
+            GlobalFree(hFlag);
+          }
+        }
       }
     }
     finally
@@ -138,6 +164,7 @@ internal static partial class SecureClipboardService
   }
 
   private const uint CF_UNICODETEXT = 13;
+  private const uint GMEM_MOVEABLE = 0x0002;
 
   [LibraryImport("user32.dll")]
   [return: MarshalAs(UnmanagedType.Bool)]
@@ -159,6 +186,12 @@ internal static partial class SecureClipboardService
 
   [LibraryImport("user32.dll", StringMarshalling = StringMarshalling.Utf16)]
   private static partial uint RegisterClipboardFormatW(string lpszFormat);
+
+  [LibraryImport("kernel32.dll")]
+  private static partial nint GlobalAlloc(uint uFlags, nuint dwBytes);
+
+  [LibraryImport("kernel32.dll")]
+  private static partial nint GlobalFree(nint hMem);
 
   [LibraryImport("kernel32.dll")]
   private static partial nint GlobalLock(nint hMem);

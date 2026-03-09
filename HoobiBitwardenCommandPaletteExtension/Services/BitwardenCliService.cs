@@ -322,7 +322,8 @@ internal sealed class BitwardenCliService
 
   public async Task<string?> SetServerUrlAsync(string url)
   {
-    using var process = StartProcess($"config server \"{url}\"");
+    var sanitizedUrl = url.Replace("\"", "");
+    using var process = StartProcess($"config server \"{sanitizedUrl}\"");
     using var cts = new CancellationTokenSource(CliTimeoutMs);
     var stdout = await process.StandardOutput.ReadToEndAsync(cts.Token);
     var stderr = await process.StandardError.ReadToEndAsync(cts.Token);
