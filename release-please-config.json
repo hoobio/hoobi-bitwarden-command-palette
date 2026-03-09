@@ -8,9 +8,8 @@
       "include-component-in-tag": false,
       "extra-files": [
         {
-          "type": "xml",
-          "path": "HoobiBitwardenCommandPaletteExtension/Package.appxmanifest",
-          "xpath": "//*[local-name()='Identity']/@Version"
+          "type": "generic",
+          "path": "HoobiBitwardenCommandPaletteExtension/Package.appxmanifest"
         }
       ]
     }
