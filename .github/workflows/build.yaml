@@ -3,8 +3,24 @@ name: Build & Release
 on:
   push:
     branches: [main, dev]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - '*.props'
+      - '*.targets'
+      - '**/Package.appxmanifest'
+      - 'version.txt'
+      - '.github/workflows/build.yaml'
   pull_request:
     branches: [main]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - '*.props'
+      - '*.targets'
+      - '**/Package.appxmanifest'
+      - 'version.txt'
+      - '.github/workflows/build.yaml'
   workflow_dispatch:
 
 permissions:
