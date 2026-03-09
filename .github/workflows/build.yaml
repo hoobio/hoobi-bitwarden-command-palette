@@ -3,8 +3,24 @@ name: Build & Release
 on:
   push:
     branches: [main, dev]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - '*.props'
+      - '*.targets'
+      - '**/Package.appxmanifest'
+      - 'version.txt'
+      - '.github/workflows/build.yaml'
   pull_request:
     branches: [main]
+    paths:
+      - '**.cs'
+      - '**.csproj'
+      - '*.props'
+      - '*.targets'
+      - '**/Package.appxmanifest'
+      - 'version.txt'
+      - '.github/workflows/build.yaml'
   workflow_dispatch:
 
 permissions:
@@ -67,6 +83,7 @@ jobs:
         working-directory: HoobiBitwardenCommandPaletteExtension
 
       - name: Import signing certificate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $pfxBytes = [Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
@@ -77,6 +94,7 @@ jobs:
           Remove-Item $pfxPath
 
       - name: Sign MSIX package
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
@@ -120,8 +138,10 @@ jobs:
             exit 0 
           }
           $msix = Get-ChildItem msix -Recurse -Filter *.msix | Select-Object -First 1 -ExpandProperty FullName
+          $reportPath = Join-Path $PWD "wack-report.xml"
           Write-Host "Running WACK on: $msix"
-          & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath wack-report.xml
+          Write-Host "Report will be saved to: $reportPath"
+          & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath $reportPath
           if ($LASTEXITCODE -ne 0) {
             Write-Host "##[error]WACK failed with exit code $LASTEXITCODE"
             exit 1
