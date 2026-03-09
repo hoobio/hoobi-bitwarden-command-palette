@@ -1,41 +1,91 @@
-using Windows.Security.Credentials;
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace HoobiBitwardenCommandPaletteExtension.Services;
 
 internal static class SessionStore
 {
-  private const string Resource = "HoobiBitwarden";
-  private const string UserName = "session";
+  private const string TargetName = "BitwardenCommandPaletteExtension/default_sessionToken";
+  private const int CredTypeGeneric = 1;
+  private const int CredPersistLocalMachine = 2;
 
   public static void Save(string sessionKey)
   {
-    var vault = new PasswordVault();
-    try { vault.Remove(vault.Retrieve(Resource, UserName)); } catch { }
-    vault.Add(new PasswordCredential(Resource, UserName, sessionKey));
+    var bytes = Encoding.UTF8.GetBytes(sessionKey);
+    var cred = new CREDENTIAL
+    {
+      Type = CredTypeGeneric,
+      TargetName = TargetName,
+      CredentialBlobSize = bytes.Length,
+      CredentialBlob = Marshal.AllocHGlobal(bytes.Length),
+      Persist = CredPersistLocalMachine,
+      UserName = "session",
+    };
+
+    try
+    {
+      Marshal.Copy(bytes, 0, cred.CredentialBlob, bytes.Length);
+      CredWrite(ref cred, 0);
+    }
+    finally
+    {
+      Marshal.FreeHGlobal(cred.CredentialBlob);
+    }
   }
 
   public static string? Load()
   {
+    if (!CredRead(TargetName, CredTypeGeneric, 0, out var credPtr))
+      return null;
+
     try
     {
-      var vault = new PasswordVault();
-      var cred = vault.Retrieve(Resource, UserName);
-      cred.RetrievePassword();
-      return cred.Password;
+      var cred = Marshal.PtrToStructure<CREDENTIAL>(credPtr);
+      if (cred.CredentialBlob == nint.Zero || cred.CredentialBlobSize == 0)
+        return null;
+
+      var bytes = new byte[cred.CredentialBlobSize];
+      Marshal.Copy(cred.CredentialBlob, bytes, 0, cred.CredentialBlobSize);
+      return Encoding.UTF8.GetString(bytes);
     }
-    catch
+    finally
     {
-      return null;
+      CredFree(credPtr);
     }
   }
 
   public static void Clear()
   {
-    try
-    {
-      var vault = new PasswordVault();
-      vault.Remove(vault.Retrieve(Resource, UserName));
-    }
-    catch { }
+    CredDelete(TargetName, CredTypeGeneric, 0);
   }
+
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct CREDENTIAL
+  {
+    public int Flags;
+    public int Type;
+    [MarshalAs(UnmanagedType.LPWStr)] public string TargetName;
+    [MarshalAs(UnmanagedType.LPWStr)] public string? Comment;
+    public long LastWritten;
+    public int CredentialBlobSize;
+    public nint CredentialBlob;
+    public int Persist;
+    public int AttributeCount;
+    public nint Attributes;
+    [MarshalAs(UnmanagedType.LPWStr)] public string? TargetAlias;
+    [MarshalAs(UnmanagedType.LPWStr)] public string? UserName;
+  }
+
+  [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool CredWrite(ref CREDENTIAL credential, int flags);
+
+  [DllImport("advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool CredRead(string targetName, int type, int flags, out nint credential);
+
+  [DllImport("advapi32.dll", EntryPoint = "CredDeleteW", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool CredDelete(string targetName, int type, int flags);
+
+  [DllImport("advapi32.dll", SetLastError = true)]
+  private static extern void CredFree(nint buffer);
 }
