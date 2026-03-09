@@ -56,6 +56,12 @@ internal sealed partial class LoginForm : FormContent
             },
             {
                 "type": "Input.Text",
+                "label": "Two-Factor Code (optional)",
+                "id": "TwoFactorCode",
+                "placeholder": "6-digit code from your authenticator app"
+            },
+            {
+                "type": "Input.Text",
                 "label": "Master Password",
                 "style": "Password",
                 "id": "MasterPassword",
@@ -64,25 +70,19 @@ internal sealed partial class LoginForm : FormContent
                 "placeholder": "Enter your master password"
             },
             {
-                "type": "Input.Text",
-                "label": "Two-Factor Code (optional)",
-                "id": "TwoFactorCode",
-                "placeholder": "6-digit code from your authenticator app"
-            },
-            {
-                "type": "TextBlock",
-                "text": "Click the Login button. Enter is not supported in password fields",
-                "size": "small",
-                "isSubtle": true,
-                "wrap": true
-            },
-            {
                 "type": "Input.Toggle",
                 "id": "RememberSession",
                 "title": "Remember session (stay unlocked between launches)",
                 "valueOn": "true",
                 "valueOff": "false",
                 "value": "{{(rememberChecked ? "true" : "false")}}"
+            },
+            {
+                "type": "TextBlock",
+                "text": "Press the Login button below or [upvote this issue](https://github.com/microsoft/PowerToys/issues/46003) to help bring Enter key support.",
+                "wrap": true,
+                "isSubtle": true,
+                "size": "small"
             }
         ],
         "actions": [

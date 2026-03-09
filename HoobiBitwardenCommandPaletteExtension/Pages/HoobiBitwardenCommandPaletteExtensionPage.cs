@@ -81,7 +81,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     {
         IsLoading = true;
 
-        var status = await _service.GetVaultStatusAsync();
+        var status = _service.LastStatus ?? await _service.GetVaultStatusAsync();
         switch (status)
         {
             case VaultStatus.CliNotFound:
@@ -94,7 +94,8 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
                 _currentItems = BuildLockedItems();
                 break;
             case VaultStatus.Unlocked:
-                await _service.RefreshCacheAsync();
+                if (!_service.IsCacheLoaded)
+                    await _service.RefreshCacheAsync();
                 _currentItems = BuildListItems(_service.SearchCached(null));
                 break;
         }
@@ -147,9 +148,16 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private ListItem BuildLogoutItem() => new(new Commands.LogoutCommand(_service))
     {
-        Title = "Bitwarden Logout",
+        Title = "Logout of Bitwarden",
         Subtitle = "Log out and clear session",
         Icon = new IconInfo("\uEA56"),
+    };
+
+    private ListItem BuildLockItem() => new(new Commands.LockCommand(_service))
+    {
+        Title = "Lock Bitwarden",
+        Subtitle = "Lock the vault and clear cached items",
+        Icon = new IconInfo("\uE72E"),
     };
 
     private IListItem[] BuildListItems(List<BitwardenItem> items)
@@ -162,6 +170,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
             list.AddRange(items.Select(BuildListItem));
 
         list.Add(BuildSetServerItem());
+        list.Add(BuildLockItem());
         list.Add(BuildLogoutItem());
         return list.ToArray();
     }

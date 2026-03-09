@@ -24,9 +24,13 @@ internal sealed class BitwardenCliService
   private int _refreshing;
   private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
 
+  private VaultStatus? _lastStatus;
+
   public bool IsUnlocked => _sessionKey != null;
 
   public bool IsCacheLoaded => _cacheLoaded;
+
+  public VaultStatus? LastStatus => _lastStatus;
 
   internal static string? ServerUrl { get; private set; }
 
@@ -43,6 +47,7 @@ internal sealed class BitwardenCliService
   public void ClearSession()
   {
     _sessionKey = null;
+    _lastStatus = null;
     lock (_cacheLock)
     {
       _cache = [];
@@ -53,17 +58,17 @@ internal sealed class BitwardenCliService
   public async Task<VaultStatus> GetVaultStatusAsync()
   {
     if (!IsCliAvailable())
-      return VaultStatus.CliNotFound;
+      return SetStatus(VaultStatus.CliNotFound);
 
     if (_sessionKey != null && await VerifySessionAsync())
-      return VaultStatus.Unlocked;
+      return SetStatus(VaultStatus.Unlocked);
 
     var envSession = Environment.GetEnvironmentVariable("BW_SESSION");
     if (!string.IsNullOrWhiteSpace(envSession))
     {
       _sessionKey = envSession;
       if (await VerifySessionAsync())
-        return VaultStatus.Unlocked;
+        return SetStatus(VaultStatus.Unlocked);
     }
 
     if (_settings?.RememberSession.Value == true)
@@ -73,12 +78,18 @@ internal sealed class BitwardenCliService
       {
         _sessionKey = stored;
         if (await VerifySessionAsync())
-          return VaultStatus.Unlocked;
+          return SetStatus(VaultStatus.Unlocked);
         SessionStore.Clear();
       }
     }
 
-    return await FetchStatusAsync();
+    return SetStatus(await FetchStatusAsync());
+  }
+
+  private VaultStatus SetStatus(VaultStatus status)
+  {
+    _lastStatus = status;
+    return status;
   }
 
   private static bool IsCliAvailable()
@@ -161,9 +172,9 @@ internal sealed class BitwardenCliService
       if (process.ExitCode == 0 && !string.IsNullOrEmpty(key))
       {
         _sessionKey = key;
+        SetStatus(VaultStatus.Unlocked);
         if (_settings?.RememberSession.Value == true)
           SessionStore.Save(key);
-        StatusChanged?.Invoke();
         return (true, null);
       }
 
@@ -229,9 +240,9 @@ internal sealed class BitwardenCliService
       if (process.ExitCode == 0 && !string.IsNullOrEmpty(key))
       {
         _sessionKey = key;
+        SetStatus(VaultStatus.Unlocked);
         if (_settings?.RememberSession.Value == true)
           SessionStore.Save(key);
-        StatusChanged?.Invoke();
         return (true, null, false);
       }
 
@@ -251,6 +262,7 @@ internal sealed class BitwardenCliService
   {
     try { await RunCliAsync("logout"); } catch { }
     _sessionKey = null;
+    _lastStatus = null;
     lock (_cacheLock)
     {
       _cache = [];
@@ -258,6 +270,20 @@ internal sealed class BitwardenCliService
     }
     SessionStore.Clear();
     ServerUrl = null;
+    StatusChanged?.Invoke();
+  }
+
+  public async Task LockAsync()
+  {
+    try { await RunCliAsync("lock"); } catch { }
+    _sessionKey = null;
+    SetStatus(VaultStatus.Locked);
+    lock (_cacheLock)
+    {
+      _cache = [];
+      _cacheLoaded = false;
+    }
+    SessionStore.Clear();
     StatusChanged?.Invoke();
   }
 
@@ -337,6 +363,13 @@ internal sealed class BitwardenCliService
   {
     if (_refreshing == 0 && DateTime.UtcNow - _lastRefresh > RefreshInterval)
       _ = Task.Run(RefreshCacheAsync);
+  }
+
+  public async Task WarmCacheAsync()
+  {
+    var status = await GetVaultStatusAsync();
+    if (status == VaultStatus.Unlocked)
+      await RefreshCacheAsync();
   }
 
 
