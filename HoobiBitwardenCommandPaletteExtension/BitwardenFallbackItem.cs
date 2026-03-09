@@ -16,6 +16,7 @@ internal sealed partial class BitwardenFallbackItem : FallbackCommandItem, IDisp
   private readonly BitwardenSettingsManager? _settings;
   private readonly Lock _lock = new();
   private CancellationTokenSource? _cts;
+  private HoobiBitwardenCommandPaletteExtensionPage? _currentPage;
 
   public BitwardenFallbackItem(BitwardenCliService service, BitwardenSettingsManager? settings = null)
       : base(new NoOpCommand(), "Search Bitwarden", "hoobi.bitwarden.fallback")
@@ -130,8 +131,19 @@ internal sealed partial class BitwardenFallbackItem : FallbackCommandItem, IDisp
       Title = $"Bitwarden: {items.Count} results for \"{query}\"";
       Subtitle = "View all results";
       Icon = IconHelpers.FromRelativePath("Assets\\StoreLogo.png");
-      Command = new HoobiBitwardenCommandPaletteExtensionPage(_service, _settings);
+      DisposePage();
+      _currentPage = new HoobiBitwardenCommandPaletteExtensionPage(_service, _settings);
+      Command = _currentPage;
       MoreCommands = [];
+    }
+  }
+
+  private void DisposePage()
+  {
+    if (_currentPage != null)
+    {
+      _currentPage.Dispose();
+      _currentPage = null;
     }
   }
 
@@ -139,5 +151,6 @@ internal sealed partial class BitwardenFallbackItem : FallbackCommandItem, IDisp
   {
     _cts?.Cancel();
     _cts?.Dispose();
+    DisposePage();
   }
 }
