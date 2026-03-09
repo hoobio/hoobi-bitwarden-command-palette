@@ -67,6 +67,7 @@ jobs:
         working-directory: HoobiBitwardenCommandPaletteExtension
 
       - name: Import signing certificate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $pfxBytes = [Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
@@ -77,6 +78,7 @@ jobs:
           Remove-Item $pfxPath
 
       - name: Sign MSIX package
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
