@@ -120,8 +120,10 @@ jobs:
             exit 0 
           }
           $msix = Get-ChildItem msix -Recurse -Filter *.msix | Select-Object -First 1 -ExpandProperty FullName
+          $reportPath = Join-Path $PWD "wack-report.xml"
           Write-Host "Running WACK on: $msix"
-          & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath wack-report.xml
+          Write-Host "Report will be saved to: $reportPath"
+          & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath $reportPath
           if ($LASTEXITCODE -ne 0) {
             Write-Host "##[error]WACK failed with exit code $LASTEXITCODE"
             exit 1

@@ -1,0 +1,98 @@
+name: PR Title Check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  validate-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title
+        id: validate
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "Validating PR title: $PR_TITLE"
+          
+          # Conventional commits pattern
+          if echo "$PR_TITLE" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([^)]+\))?!?: .+'; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "✅ PR title is valid"
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "❌ PR title is invalid"
+          fi
+
+      - name: Find existing comment
+        if: always()
+        id: find-comment
+        uses: peter-evans/find-comment@v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: '<!-- pr-title-validation -->'
+
+      - name: Delete comment if title is valid
+        if: steps.validate.outputs.valid == 'true' && steps.find-comment.outputs.comment-id != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.deleteComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: ${{ steps.find-comment.outputs.comment-id }}
+            });
+
+      - name: Create or update comment if title is invalid
+        if: steps.validate.outputs.valid == 'false'
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          body: |
+            <!-- pr-title-validation -->
+            ## ❌ PR Title Validation Failed
+            
+            Your PR title doesn't follow the [Conventional Commits](https://www.conventionalcommits.org/) format required for automated releases.
+            
+            **Current title:** `${{ github.event.pull_request.title }}`
+            
+            **Required format:** `type(scope): description`
+            
+            **Valid types:**
+            - `feat` - New feature (triggers MINOR version bump)
+            - `fix` - Bug fix (triggers PATCH version bump)
+            - `chore` - Maintenance (no version bump)
+            - `docs` - Documentation only
+            - `style` - Code style changes
+            - `refactor` - Code refactoring
+            - `perf` - Performance improvements
+            - `test` - Test changes
+            - `build` - Build system changes
+            - `ci` - CI/CD changes
+            - `revert` - Revert previous commit
+            
+            **Examples:**
+            - ✅ `feat: add vault caching support`
+            - ✅ `fix: resolve timeout on unlock`
+            - ✅ `feat!: breaking change to API`
+            - ✅ `fix(auth): handle session expiry`
+            - ❌ `Add new feature`
+            - ❌ `🐛 Fix bug`
+            - ❌ `WIP: updates`
+            
+            **Breaking changes** (triggers MAJOR version bump):
+            - Add `!` after type: `feat!: description`
+            - Or include `BREAKING CHANGE:` in commit body
+            
+            Please update your PR title and this check will automatically re-run.
+          edit-mode: replace
+
+      - name: Fail if title is invalid
+        if: steps.validate.outputs.valid == 'false'
+        run: |
+          echo "::error::PR title does not match conventional commits format"
+          exit 1
