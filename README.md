@@ -2,6 +2,19 @@
 
 A Windows Command Palette extension that integrates your Bitwarden vault directly into the Windows Command Palette, enabling fast credential search, copy, and launch: without leaving what you're doing.
 
+[![Get it from Microsoft Store](https://get.microsoft.com/images/en-us%20dark.svg)](https://apps.microsoft.com/detail/9P5KS8T80MV3)
+&nbsp;&nbsp;&nbsp;&nbsp;
+[![Download from GitHub Releases](https://img.shields.io/github/v/release/hoobio/hoobi-bitwarden-command-palette?label=Download%20from%20GitHub&logo=github&style=for-the-badge&color=181717)](https://github.com/hoobio/hoobi-bitwarden-command-palette/releases/latest)
+
+---
+
+[![Build & Release](https://img.shields.io/github/actions/workflow/status/hoobio/hoobi-bitwarden-command-palette/build.yaml?branch=main&label=Build&logo=github-actions)](https://github.com/hoobio/hoobi-bitwarden-command-palette/actions/workflows/build.yaml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/hoobio/hoobi-bitwarden-command-palette/codeql.yml?branch=main&label=CodeQL&logo=github)](https://github.com/hoobio/hoobi-bitwarden-command-palette/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Stars](https://img.shields.io/github/stars/hoobio/hoobi-bitwarden-command-palette?style=social)](https://github.com/hoobio/hoobi-bitwarden-command-palette/stargazers)
+[![GitHub Issues](https://img.shields.io/github/issues/hoobio/hoobi-bitwarden-command-palette)](https://github.com/hoobio/hoobi-bitwarden-command-palette/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/hoobio/hoobi-bitwarden-command-palette)](https://github.com/hoobio/hoobi-bitwarden-command-palette/commits/main)
+
 ![Preview](preview.png)
 
 ## Features
@@ -24,7 +37,13 @@ A Windows Command Palette extension that integrates your Bitwarden vault directl
 
 ## Installation
 
-### From Release
+### From Microsoft Store (Recommended)
+
+**[Get it from Microsoft Store](https://apps.microsoft.com/detail/9P5KS8T80MV3)**
+
+The easiest way to install and receive automatic updates.
+
+### From GitHub Releases
 
 1. Download the `.msix` package for your architecture (x64 or ARM64) from [Releases](../../releases)
 2. Download and install the signing certificate ([`HoobiBitwardenCommandPaletteExtension.cer`](HoobiBitwardenCommandPaletteExtension.cer)) to the **Trusted People** store:
