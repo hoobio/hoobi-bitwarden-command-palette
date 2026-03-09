@@ -4,23 +4,23 @@ on:
   push:
     branches: [main, dev]
     paths:
-      - '**.cs'
-      - '**.csproj'
-      - '*.props'
-      - '*.targets'
-      - '**/Package.appxmanifest'
-      - 'version.txt'
-      - '.github/workflows/build.yaml'
+      - "**.cs"
+      - "**.csproj"
+      - "*.props"
+      - "*.targets"
+      - "**/Package.appxmanifest"
+      - "version.txt"
+      - ".github/workflows/build.yaml"
   pull_request:
     branches: [main]
     paths:
-      - '**.cs'
-      - '**.csproj'
-      - '*.props'
-      - '*.targets'
-      - '**/Package.appxmanifest'
-      - 'version.txt'
-      - '.github/workflows/build.yaml'
+      - "**.cs"
+      - "**.csproj"
+      - "*.props"
+      - "*.targets"
+      - "**/Package.appxmanifest"
+      - "version.txt"
+      - ".github/workflows/build.yaml"
   workflow_dispatch:
 
 permissions:
@@ -105,6 +105,12 @@ jobs:
             & $signtool sign /fd SHA256 /sha1 "${{ vars.SIGNING_CERT_THUMBPRINT }}" /td SHA256 $_.FullName
             if ($LASTEXITCODE -ne 0) { throw "Signing failed for $($_.Name)" }
           }
+
+      - name: Attest MSIX packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'AppPackages/**/*.msix'
 
       - name: Upload MSIX artifact
         uses: actions/upload-artifact@v7
