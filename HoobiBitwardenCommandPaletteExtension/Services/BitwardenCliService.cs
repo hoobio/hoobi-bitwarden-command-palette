@@ -257,7 +257,7 @@ internal sealed class BitwardenCliService
       process.StandardInput.Close();
 
       var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
-      var (stderr, twoFactorDetected) = await ReadStderrWithTwoFactorDetectionAsync(process);
+      var (stderr, twoFactorDetected) = await ReadStderrWithTwoFactorDetectionAsync(process, cts.Token);
 
       if (twoFactorDetected)
       {
@@ -359,9 +359,10 @@ internal sealed class BitwardenCliService
             .ThenByDescending(i => i.RevisionDate)
             .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)];
 
+      var wordBoundaryRegex = new Regex(@"\b" + Regex.Escape(textQuery) + @"\b", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
       return results
           .Where(i => Matches(i, textQuery))
-          .OrderBy(i => Relevance(i, textQuery))
+          .OrderBy(i => Relevance(i, textQuery, wordBoundaryRegex))
           .ThenByDescending(i => AccessTracker.IsLastCopied(i.Id) ? 1 : 0)
           .ThenByDescending(i => i.Favorite ? 1 : 0)
           .ThenByDescending(i => ContextBoost(i, context))
@@ -461,11 +462,11 @@ internal sealed class BitwardenCliService
     _ => items,
   };
 
-  private static int Relevance(BitwardenItem item, string query)
+  private static int Relevance(BitwardenItem item, string query, Regex wordBoundaryRegex)
   {
     if (item.Name.Equals(query, StringComparison.OrdinalIgnoreCase)) return 0;
     if (item.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase)) return 1;
-    if (Regex.IsMatch(item.Name, @"\b" + Regex.Escape(query) + @"\b", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking)) return 2;
+    if (wordBoundaryRegex.IsMatch(item.Name)) return 2;
     if (item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)) return 3;
     return 4;
   }
@@ -572,13 +573,13 @@ internal sealed class BitwardenCliService
     return Process.Start(psi)!;
   }
 
-  private static async Task<(string Content, bool TwoFactorDetected)> ReadStderrWithTwoFactorDetectionAsync(Process process)
+  private static async Task<(string Content, bool TwoFactorDetected)> ReadStderrWithTwoFactorDetectionAsync(Process process, CancellationToken token)
   {
     var sb = new System.Text.StringBuilder();
     var buffer = new char[256];
     while (true)
     {
-      var count = await process.StandardError.ReadAsync(buffer.AsMemory());
+      var count = await process.StandardError.ReadAsync(buffer.AsMemory(), token);
       if (count == 0) break;
       sb.Append(buffer, 0, count);
       if (sb.ToString().Contains("Two-step", StringComparison.OrdinalIgnoreCase))

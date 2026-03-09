@@ -15,6 +15,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 {
     private readonly BitwardenCliService _service;
     private readonly BitwardenSettingsManager? _settings;
+    private readonly Lock _itemsLock = new();
     private IListItem[] _currentItems = [];
     private bool _initialLoadStarted;
     private bool _handlingAction;
@@ -58,21 +59,24 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     public override IListItem[] GetItems()
     {
-        if (_currentItems.Length > 0)
+        lock (_itemsLock)
         {
-            IsLoading = false;
+            if (_currentItems.Length > 0)
+            {
+                IsLoading = false;
+                return _currentItems;
+            }
+
+            if (!_initialLoadStarted)
+            {
+                _initialLoadStarted = true;
+                IsLoading = true;
+                _currentItems = BuildLoadingPlaceholder("Checking vault status...", "bw status");
+                _ = Task.Run(InitializeAsync);
+            }
+
             return _currentItems;
         }
-
-        if (!_initialLoadStarted)
-        {
-            _initialLoadStarted = true;
-            IsLoading = true;
-            _currentItems = BuildLoadingPlaceholder("Checking vault status...", "bw status");
-            _ = Task.Run(InitializeAsync);
-        }
-
-        return _currentItems;
     }
 
     public override void UpdateSearchText(string oldSearch, string newSearch)
@@ -337,12 +341,18 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         var showWatchtower = _settings?.ShowWatchtowerTags.Value != false;
         foreach (var (listItem, vaultItem) in items)
             listItem.Tags = VaultItemHelper.BuildTags(vaultItem, showWatchtower, _context);
+
+        RaiseItemsChanged();
     }
 
     private void OnItemAccessed()
     {
         if (_service.LastStatus == VaultStatus.Unlocked && _service.IsCacheLoaded)
-            _currentItems = BuildListItems(_service.SearchCached(_currentSearchText, _context));
+        {
+            lock (_itemsLock)
+                _currentItems = BuildListItems(_service.SearchCached(_currentSearchText, _context));
+            RaiseItemsChanged();
+        }
     }
 
     private void OnLockRequested()
