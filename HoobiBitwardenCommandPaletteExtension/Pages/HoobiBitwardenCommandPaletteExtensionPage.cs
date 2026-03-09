@@ -16,6 +16,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     private readonly BitwardenSettingsManager? _settings;
     private IListItem[] _currentItems = [];
     private bool _initialLoadStarted;
+    private bool _handlingAction;
     private string _currentSearchText = string.Empty;
     private string? _errorMessage;
 
@@ -80,15 +81,22 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnCacheUpdated()
     {
+        if (_handlingAction) return;
         var results = _service.SearchCached(_currentSearchText);
         _currentItems = BuildListItems(results);
         RaiseItemsChanged();
         IsLoading = false;
     }
 
-    private void OnStatusChanged() => RebuildForCurrentStatus();
+    private void OnStatusChanged()
+    {
+        if (!_handlingAction) RebuildForCurrentStatus();
+    }
 
-    private void OnWarmupCompleted() => RebuildForCurrentStatus();
+    private void OnWarmupCompleted()
+    {
+        if (!_handlingAction) RebuildForCurrentStatus();
+    }
 
     private void RebuildForCurrentStatus()
     {
@@ -200,21 +208,23 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         return item;
     }
 
-    private ListItem BuildSetServerItem() => new(new Pages.SetServerPage(_service))
+    private ListItem BuildSetServerItem() => new(new Pages.SetServerPage(_service, OnSetServerSubmitted))
     {
         Title = "Set Bitwarden Server",
         Subtitle = BitwardenCliService.ServerUrl ?? "https://vault.bitwarden.com",
         Icon = new IconInfo("\uE774"),
     };
 
-    private ListItem BuildLogoutItem() => new(new Commands.LogoutCommand(_service))
+    private ListItem BuildLogoutItem() => new(new AnonymousCommand(OnLogoutRequested)
+    { Name = "Logout", Result = CommandResult.KeepOpen() })
     {
         Title = "Logout of Bitwarden",
         Subtitle = "Log out and clear session",
         Icon = new IconInfo("\uEA56"),
     };
 
-    private ListItem BuildLockItem() => new(new Commands.LockCommand(_service))
+    private ListItem BuildLockItem() => new(new AnonymousCommand(OnLockRequested)
+    { Name = "Lock", Result = CommandResult.KeepOpen() })
     {
         Title = "Lock Bitwarden",
         Subtitle = "Lock the vault and clear cached items",
@@ -256,6 +266,80 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     {
         if (_service.LastStatus == VaultStatus.Unlocked && _service.IsCacheLoaded)
             _currentItems = BuildListItems(_service.SearchCached(_currentSearchText));
+    }
+
+    private void OnLockRequested()
+    {
+        _handlingAction = true;
+        _errorMessage = null;
+        IsLoading = true;
+        ShowLoadingStatus("Locking vault...", "bw lock");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _service.LockAsync();
+                _currentItems = BuildLockedItems();
+                RaiseItemsChanged();
+            }
+            finally
+            {
+                _handlingAction = false;
+                IsLoading = false;
+            }
+        });
+    }
+
+    private void OnLogoutRequested()
+    {
+        _handlingAction = true;
+        _errorMessage = null;
+        IsLoading = true;
+        ShowLoadingStatus("Logging out...", "bw logout");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _service.LogoutAsync();
+                _currentItems = BuildUnauthenticatedItems();
+                RaiseItemsChanged();
+            }
+            finally
+            {
+                _handlingAction = false;
+                IsLoading = false;
+            }
+        });
+    }
+
+    private void OnSetServerSubmitted(string url)
+    {
+        _handlingAction = true;
+        _errorMessage = null;
+        IsLoading = true;
+        ShowLoadingStatus("Setting server URL...", "bw config server");
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var error = await _service.SetServerUrlAsync(url);
+                if (error != null)
+                {
+                    _errorMessage = error;
+                    RebuildForCurrentStatus();
+                    return;
+                }
+
+                ShowLoadingStatus("Checking vault status...", "bw status");
+                await _service.GetVaultStatusAsync();
+                RebuildForCurrentStatus();
+            }
+            finally
+            {
+                _handlingAction = false;
+                IsLoading = false;
+            }
+        });
     }
 
     private void OnUnlockSubmitted(string password)

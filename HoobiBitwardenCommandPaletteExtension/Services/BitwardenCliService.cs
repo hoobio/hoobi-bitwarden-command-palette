@@ -283,7 +283,7 @@ internal sealed class BitwardenCliService
   public async Task LogoutAsync()
   {
     _sessionKey = null;
-    _lastStatus = null;
+    SetStatus(VaultStatus.Unauthenticated);
     lock (_cacheLock)
     {
       _cache = [];
