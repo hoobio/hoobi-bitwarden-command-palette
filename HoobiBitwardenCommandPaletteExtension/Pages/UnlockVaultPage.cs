@@ -55,19 +55,19 @@ internal sealed partial class UnlockForm : FormContent
                 "placeholder": "Enter your master password"
             },
             {
-                "type": "TextBlock",
-                "text": "Click the Unlock button. Enter is not supported in password fields",
-                "size": "small",
-                "isSubtle": true,
-                "wrap": true
-            },
-            {
                 "type": "Input.Toggle",
                 "id": "RememberSession",
                 "title": "Remember session (stay unlocked between launches)",
                 "valueOn": "true",
                 "valueOff": "false",
                 "value": "{{(rememberChecked ? "true" : "false")}}"
+            },
+            {
+                "type": "TextBlock",
+                "text": "Press the Unlock button below or [upvote this issue](https://github.com/microsoft/PowerToys/issues/46003) to help bring Enter key support.",
+                "wrap": true,
+                "isSubtle": true,
+                "size": "small"
             }
         ],
         "actions": [

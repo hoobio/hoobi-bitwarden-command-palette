@@ -5,19 +5,19 @@ using HoobiBitwardenCommandPaletteExtension.Services;
 
 namespace HoobiBitwardenCommandPaletteExtension.Commands;
 
-internal sealed partial class LogoutCommand : InvokableCommand
+internal sealed partial class LockCommand : InvokableCommand
 {
   private readonly BitwardenCliService _service;
 
-  public LogoutCommand(BitwardenCliService service)
+  public LockCommand(BitwardenCliService service)
   {
     _service = service;
-    Name = "Logout";
+    Name = "Lock";
   }
 
   public override ICommandResult Invoke()
   {
-    _ = Task.Run(() => _service.LogoutAsync());
-    return CommandResult.ShowToast("Logging out of Bitwarden...");
+    _ = Task.Run(() => _service.LockAsync());
+    return CommandResult.ShowToast("Locking Bitwarden vault...");
   }
 }
