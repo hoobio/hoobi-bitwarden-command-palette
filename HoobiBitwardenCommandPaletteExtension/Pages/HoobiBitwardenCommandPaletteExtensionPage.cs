@@ -300,13 +300,24 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         var showTotpTag = _settings?.ShowTotpTag.Value != false;
         var totpTracked = new List<(ListItem, BitwardenItem)>();
 
+        var contextLimit = int.TryParse(_settings?.ContextItemLimit.Value, out var lv) ? lv : 3;
+        var contextTagsUsed = 0;
+        var capContextTags = showContextTag && string.IsNullOrWhiteSpace(_currentSearchText) && contextLimit > 0;
+
         if (items.Count == 0)
             list.Add(new ListItem(new NoOpCommand()) { Title = "No results found" });
         else
         {
             foreach (var item in items)
             {
-                var listItem = BuildListItem(item, showWatchtower, showContextTag, showTotpTag);
+                var allowContextTag = showContextTag;
+                if (capContextTags)
+                {
+                    var isContextMatch = _context != null && ContextAwarenessService.ContextScore(_context, item) > 0;
+                    allowContextTag = isContextMatch && contextTagsUsed < contextLimit;
+                    if (allowContextTag) contextTagsUsed++;
+                }
+                var listItem = BuildListItem(item, showWatchtower, allowContextTag, showTotpTag);
                 list.Add(listItem);
                 if (showTotpTag && item.HasTotp)
                     totpTracked.Add((listItem, item));
