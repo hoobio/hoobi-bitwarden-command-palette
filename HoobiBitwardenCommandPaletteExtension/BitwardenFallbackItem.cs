@@ -115,7 +115,7 @@ internal sealed partial class BitwardenFallbackItem : FallbackCommandItem, IDisp
 
       Title = item.Name;
       Subtitle = item.Subtitle;
-      Icon = VaultItemHelper.GetIcon(item);
+      Icon = VaultItemHelper.GetIcon(item, _settings?.ShowWebsiteIcons.Value != false);
       Command = VaultItemHelper.GetDefaultCommand(item);
       MoreCommands = VaultItemHelper.BuildContextItems(item);
     }

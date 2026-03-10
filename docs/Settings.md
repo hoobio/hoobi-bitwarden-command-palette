@@ -12,6 +12,14 @@ Open settings from the gear icon in the vault browser. All settings take effect 
 | **Default** | Off |
 | **Description** | Persist the Bitwarden session key in Windows Credential Manager so the vault stays unlocked across restarts. When disabled, the session key is stored only in memory and lost when the extension process exits. |
 
+### Show Website Icons
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | On |
+| **Description** | Download and display website favicons for login items. Icons are fetched from `icons.bitwarden.net` (cloud) or your self-hosted server's `/icons/` endpoint, then cached locally for 7 days so each domain is only fetched once. Disable for privacy — a generic icon will be shown instead. See [Bitwarden's website icon documentation](https://bitwarden.com/help/website-icons/) for more details. |
+
 ### Auto-Lock Timeout
 
 | | |
