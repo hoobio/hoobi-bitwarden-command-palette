@@ -428,13 +428,6 @@ internal sealed class BitwardenCliService
         continue;
       }
 
-      if (token.Equals("is:favorite", StringComparison.OrdinalIgnoreCase)
-          || token.Equals("is:fav", StringComparison.OrdinalIgnoreCase))
-      {
-        filters.Add(("is", "favorite"));
-        continue;
-      }
-
       if (remaining.Length > 0) remaining.Append(' ');
       remaining.Append(token);
     }
@@ -443,7 +436,7 @@ internal sealed class BitwardenCliService
     return (filters, text);
   }
 
-  private static bool IsKnownFilter(string key) => key is "folder" or "url" or "host" or "type" or "org";
+  private static bool IsKnownFilter(string key) => key is "folder" or "url" or "host" or "type" or "org" or "is";
 
   private IEnumerable<BitwardenItem> ApplyFilter(IEnumerable<BitwardenItem> items, (string Key, string Value) filter) => filter.Key switch
   {
@@ -470,6 +463,17 @@ internal sealed class BitwardenCliService
     "is" => filter.Value switch
     {
       "favorite" or "fav" => items.Where(i => i.Favorite),
+      "weak" => items.Where(i => i.Type == BitwardenItemType.Login
+          && !string.IsNullOrEmpty(i.Password) && i.Password!.Length < 8),
+      "old" => items.Where(i => i.Type == BitwardenItemType.Login
+          && !string.IsNullOrEmpty(i.Password)
+          && DateTime.UtcNow - (i.PasswordRevisionDate ?? i.RevisionDate) > TimeSpan.FromDays(365)),
+      "insecure" => items.Where(i => i.Type == BitwardenItemType.Login
+          && i.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase))),
+      "watchtower" => items.Where(i => i.Type == BitwardenItemType.Login && (
+          (!string.IsNullOrEmpty(i.Password) && i.Password!.Length < 8)
+          || (!string.IsNullOrEmpty(i.Password) && DateTime.UtcNow - (i.PasswordRevisionDate ?? i.RevisionDate) > TimeSpan.FromDays(365))
+          || i.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))),
       _ => items,
     },
     _ => items,
