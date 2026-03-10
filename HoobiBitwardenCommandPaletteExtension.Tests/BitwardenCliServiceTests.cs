@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using HoobiBitwardenCommandPaletteExtension.Models;
 using HoobiBitwardenCommandPaletteExtension.Services;
@@ -589,5 +590,584 @@ public class BitwardenCliServiceTests
     var items = BitwardenCliService.ParseItems(json);
     Assert.NotNull(items[0].PasswordRevisionDate);
     Assert.Equal(2023, items[0].PasswordRevisionDate!.Value.Year);
+  }
+
+  [Fact]
+  public void ParseItems_LoginWithNullLoginNode_CreatesLoginWithDefaults()
+  {
+    var json = """[{"id":"n-1","type":1,"name":"Null Login","revisionDate":"2024-01-01T00:00:00Z","login":null}]""";
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Single(items);
+    Assert.Equal(BitwardenItemType.Login, items[0].Type);
+    Assert.Null(items[0].Username);
+    Assert.Empty(items[0].Uris);
+  }
+
+  [Fact]
+  public void ParseItems_IdentityWithAllAddressParts()
+  {
+    var json = """
+    [
+      {
+        "id": "addr-1",
+        "type": 4,
+        "name": "Full Address",
+        "revisionDate": "2024-01-01T00:00:00Z",
+        "identity": {
+          "firstName": "A",
+          "middleName": "B",
+          "lastName": "C",
+          "address1": "Line 1",
+          "address2": "Line 2",
+          "address3": "Line 3",
+          "city": "City",
+          "state": "ST",
+          "postalCode": "12345",
+          "country": "US"
+        }
+      }
+    ]
+    """;
+
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Equal("A B C", items[0].IdentityFullName);
+    Assert.Contains("Line 1", items[0].IdentityAddress!, StringComparison.Ordinal);
+    Assert.Contains("Line 2", items[0].IdentityAddress!, StringComparison.Ordinal);
+    Assert.Contains("Line 3", items[0].IdentityAddress!, StringComparison.Ordinal);
+    Assert.Contains("City", items[0].IdentityAddress!, StringComparison.Ordinal);
+    Assert.Contains("US", items[0].IdentityAddress!, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ParseItems_IdentityWithOnlyFirstName()
+  {
+    var json = """
+    [
+      {
+        "id": "id-partial",
+        "type": 4,
+        "name": "Partial",
+        "revisionDate": "2024-01-01T00:00:00Z",
+        "identity": { "firstName": "Solo" }
+      }
+    ]
+    """;
+
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Equal("Solo", items[0].IdentityFullName);
+    Assert.Null(items[0].IdentityAddress);
+  }
+
+  [Fact]
+  public void ParseItems_IdentityEmptyFields_NullFullNameAndAddress()
+  {
+    var json = """[{"id":"e","type":4,"name":"Empty","revisionDate":"2024-01-01T00:00:00Z","identity":{}}]""";
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Null(items[0].IdentityFullName);
+    Assert.Null(items[0].IdentityAddress);
+  }
+
+  [Fact]
+  public void ParseItems_LoginWithNullPasswordRevisionDate()
+  {
+    var json = """
+    [
+      {
+        "id": "np-1",
+        "type": 1,
+        "name": "No PW Rev",
+        "revisionDate": "2024-01-01T00:00:00Z",
+        "login": { "username": "u", "password": "p", "uris": [] }
+      }
+    ]
+    """;
+
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Null(items[0].PasswordRevisionDate);
+  }
+
+  [Fact]
+  public void ParseItems_LoginWithEmptyUriString_Skipped()
+  {
+    var json = """
+    [
+      {
+        "id": "eu-1",
+        "type": 1,
+        "name": "Empty URI",
+        "revisionDate": "2024-01-01T00:00:00Z",
+        "login": { "uris": [{ "uri": "", "match": null }, { "uri": "https://valid.com", "match": null }] }
+      }
+    ]
+    """;
+
+    var items = BitwardenCliService.ParseItems(json);
+    Assert.Single(items[0].Uris);
+    Assert.Equal("https://valid.com", items[0].Uris[0].Uri);
+  }
+
+  [Fact]
+  public void ParseItems_NullNodeInArray_Skipped()
+  {
+    var arr = new JsonArray(null, JsonNode.Parse("""{"id":"ok","type":2,"name":"Note","revisionDate":"2024-01-01T00:00:00Z"}"""));
+    var items = BitwardenCliService.ParseItems(arr.ToJsonString());
+    Assert.Single(items);
+  }
+
+  // --- ParseCustomFields ---
+
+  [Fact]
+  public void ParseCustomFields_Null_ReturnsEmptyDictionary()
+  {
+    var result = BitwardenCliService.ParseCustomFields(null);
+    Assert.Empty(result);
+  }
+
+  [Fact]
+  public void ParseCustomFields_EmptyArray_ReturnsEmpty()
+  {
+    var result = BitwardenCliService.ParseCustomFields(JsonNode.Parse("[]"));
+    Assert.Empty(result);
+  }
+
+  [Fact]
+  public void ParseCustomFields_MixedFields()
+  {
+    var json = JsonNode.Parse("""
+    [
+      {"name":"Visible","value":"v1","type":0},
+      {"name":"Hidden","value":"v2","type":1}
+    ]
+    """);
+    var result = BitwardenCliService.ParseCustomFields(json);
+    Assert.Equal(2, result.Count);
+    Assert.False(result["Visible"].IsHidden);
+    Assert.True(result["Hidden"].IsHidden);
+    Assert.Equal("v1", result["Visible"].Value);
+  }
+
+  [Fact]
+  public void ParseCustomFields_DuplicateName_FirstWins()
+  {
+    var json = JsonNode.Parse("""
+    [
+      {"name":"Key","value":"first","type":0},
+      {"name":"Key","value":"second","type":0}
+    ]
+    """);
+    var result = BitwardenCliService.ParseCustomFields(json);
+    Assert.Single(result);
+    Assert.Equal("first", result["Key"].Value);
+  }
+
+  [Fact]
+  public void ParseCustomFields_NullNameOrValue_Skipped()
+  {
+    var json = JsonNode.Parse("""
+    [
+      {"name":null,"value":"v","type":0},
+      {"name":"","value":"v","type":0},
+      {"name":"Good","value":null,"type":0},
+      {"name":"Valid","value":"ok","type":0}
+    ]
+    """);
+    var result = BitwardenCliService.ParseCustomFields(json);
+    Assert.Single(result);
+    Assert.Equal("ok", result["Valid"].Value);
+  }
+
+  [Fact]
+  public void ParseCustomFields_CaseInsensitiveLookup()
+  {
+    var json = JsonNode.Parse("""
+    [{"name":"MyKey","value":"val","type":0}]
+    """);
+    var result = BitwardenCliService.ParseCustomFields(json);
+    Assert.True(result.ContainsKey("mykey"));
+    Assert.True(result.ContainsKey("MYKEY"));
+  }
+
+  // --- GetFolderName ---
+
+  [Fact]
+  public void GetFolderName_ExistingFolder_ReturnsName()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([], new Dictionary<string, string> { ["f1"] = "Work" });
+    Assert.Equal("Work", svc.GetFolderName("f1"));
+  }
+
+  [Fact]
+  public void GetFolderName_MissingFolder_ReturnsNull()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([], []);
+    Assert.Null(svc.GetFolderName("nonexistent"));
+  }
+
+  [Fact]
+  public void GetFolderName_NullId_ReturnsNull()
+  {
+    var svc = new BitwardenCliService();
+    Assert.Null(svc.GetFolderName(null));
+  }
+
+  // --- ApplyFilter ---
+
+  private static BitwardenCliService CreateServiceWithFolders(Dictionary<string, string>? folders = null)
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([], folders ?? []);
+    return svc;
+  }
+
+  private static List<BitwardenItem> TestItems =>
+  [
+    new()
+    {
+      Id = "login-1", Name = "GitHub", Type = BitwardenItemType.Login,
+      Username = "octocat", Password = "strongpass123!", HasTotp = true, TotpSecret = "JBSWY3DPEHPK3PXP",
+      HasPasskey = true, Favorite = true, FolderId = "f-work", Notes = "dev account",
+      OrganizationId = "org-1", RevisionDate = DateTime.UtcNow,
+      Uris = [new ItemUri("https://github.com", UriMatchType.Default)],
+    },
+    new()
+    {
+      Id = "login-2", Name = "Example HTTP", Type = BitwardenItemType.Login,
+      Password = "short", FolderId = "f-personal",
+      RevisionDate = DateTime.UtcNow - TimeSpan.FromDays(400),
+      PasswordRevisionDate = DateTime.UtcNow - TimeSpan.FromDays(400),
+      Uris = [new ItemUri("http://example.com", UriMatchType.Default)],
+    },
+    new()
+    {
+      Id = "card-1", Name = "My Visa", Type = BitwardenItemType.Card,
+      CardBrand = "Visa", CardNumber = "4111", RevisionDate = DateTime.UtcNow,
+    },
+    new()
+    {
+      Id = "note-1", Name = "Secret", Type = BitwardenItemType.SecureNote,
+      Notes = "confidential", RevisionDate = DateTime.UtcNow,
+    },
+    new()
+    {
+      Id = "identity-1", Name = "Me", Type = BitwardenItemType.Identity,
+      IdentityEmail = "me@test.com", RevisionDate = DateTime.UtcNow,
+    },
+    new()
+    {
+      Id = "ssh-1", Name = "My Key", Type = BitwardenItemType.SshKey,
+      RevisionDate = DateTime.UtcNow,
+    },
+    new()
+    {
+      Id = "login-nopw", Name = "No Password", Type = BitwardenItemType.Login,
+      Uris = [], RevisionDate = DateTime.UtcNow,
+    },
+  ];
+
+  [Fact]
+  public void ApplyFilter_Folder_MatchesByName()
+  {
+    var svc = CreateServiceWithFolders(new() { ["f-work"] = "Work", ["f-personal"] = "Personal" });
+    var result = svc.ApplyFilter(TestItems, ("folder", "Work")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-1", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Folder_CaseInsensitive()
+  {
+    var svc = CreateServiceWithFolders(new() { ["f-work"] = "Work" });
+    var result = svc.ApplyFilter(TestItems, ("folder", "work")).ToList();
+    Assert.Single(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Folder_NoMatch_ReturnsEmpty()
+  {
+    var svc = CreateServiceWithFolders(new() { ["f-work"] = "Work" });
+    var result = svc.ApplyFilter(TestItems, ("folder", "Archive")).ToList();
+    Assert.Empty(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Url_MatchesLoginUris()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("url", "github")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-1", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Host_MatchesLoginUris()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("host", "example.com")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-2", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Url_NonLoginItems_Excluded()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("url", "visa")).ToList();
+    Assert.Empty(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Type_ByName()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("type", "Card")).ToList();
+    Assert.Single(result);
+    Assert.Equal("card-1", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Type_ByNumber()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("type", "3")).ToList();
+    Assert.Single(result);
+    Assert.Equal(BitwardenItemType.Card, result[0].Type);
+  }
+
+  [Fact]
+  public void ApplyFilter_Type_CaseInsensitive()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("type", "login")).ToList();
+    Assert.Equal(3, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Org_MatchesOrganizationId()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("org", "org-1")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-1", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Org_NullOrg_Excluded()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("org", "nonexistent")).ToList();
+    Assert.Empty(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Totp()
+  {
+    var svc = CreateServiceWithFolders();
+    foreach (var alias in new[] { "totp", "otp", "2fa", "mfa" })
+    {
+      var result = svc.ApplyFilter(TestItems, ("has", alias)).ToList();
+      Assert.Single(result);
+      Assert.Equal("login-1", result[0].Id);
+    }
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Passkey()
+  {
+    var svc = CreateServiceWithFolders();
+    foreach (var alias in new[] { "passkey", "fido2", "webauthn", "passwordless" })
+    {
+      var result = svc.ApplyFilter(TestItems, ("has", alias)).ToList();
+      Assert.Single(result);
+      Assert.Equal("login-1", result[0].Id);
+    }
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Password()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "password")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Url()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "url")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Notes()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "notes")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Folder()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "folder")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Attachment_Passthrough()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "attachment")).ToList();
+    Assert.Equal(TestItems.Count, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Unknown_Passthrough()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "nonexistent")).ToList();
+    Assert.Equal(TestItems.Count, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Favorite()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "favorite")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-1", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Fav_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "fav")).ToList();
+    Assert.Single(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Weak()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "weak")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-2", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Old()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "old")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-2", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Stale_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "stale")).ToList();
+    Assert.Single(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Insecure()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "insecure")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-2", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Http_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "http")).ToList();
+    Assert.Single(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Watchtower_CombinesAllFlags()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "watchtower")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login-2", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Flagged_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "flagged")).ToList();
+    Assert.Single(result);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Unknown_Passthrough()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("is", "nonexistent")).ToList();
+    Assert.Equal(TestItems.Count, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_UnknownKey_Passthrough()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("unknown", "value")).ToList();
+    Assert.Equal(TestItems.Count, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Is_Weak_OnlyLoginsWithPasswords()
+  {
+    var svc = CreateServiceWithFolders();
+    var items = new List<BitwardenItem>
+    {
+      new() { Id = "card", Name = "Card", Type = BitwardenItemType.Card, Password = "abc" },
+      new() { Id = "login", Name = "Login", Type = BitwardenItemType.Login, Password = "abc", Uris = [] },
+    };
+    var result = svc.ApplyFilter(items, ("is", "weak")).ToList();
+    Assert.Single(result);
+    Assert.Equal("login", result[0].Id);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Pw_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "pw")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Note_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "note")).ToList();
+    Assert.Equal(2, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Attachments_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "attachments")).ToList();
+    Assert.Equal(TestItems.Count, result.Count);
+  }
+
+  [Fact]
+  public void ApplyFilter_Has_Uri_Alias()
+  {
+    var svc = CreateServiceWithFolders();
+    var result = svc.ApplyFilter(TestItems, ("has", "uri")).ToList();
+    Assert.Equal(2, result.Count);
   }
 }

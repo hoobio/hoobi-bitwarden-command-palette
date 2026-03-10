@@ -68,6 +68,11 @@ internal sealed class BitwardenCliService
       _settings.Settings.SettingsChanged += (_, _) => ApplyAutoLockSetting();
   }
 
+  internal void LoadTestData(List<BitwardenItem> items, Dictionary<string, string> folders)
+  {
+    lock (_cacheLock) { _cache = items; _folders = folders; _cacheLoaded = true; }
+  }
+
   private void ApplyAutoLockSetting()
   {
     var minutes = int.TryParse(_settings?.AutoLockTimeout.Value, out var m) ? m : 0;
@@ -510,7 +515,7 @@ internal sealed class BitwardenCliService
 
   internal static bool IsKnownFilter(string key) => key is "folder" or "url" or "host" or "type" or "org" or "is";
 
-  private IEnumerable<BitwardenItem> ApplyFilter(IEnumerable<BitwardenItem> items, (string Key, string Value) filter) => filter.Key switch
+  internal IEnumerable<BitwardenItem> ApplyFilter(IEnumerable<BitwardenItem> items, (string Key, string Value) filter) => filter.Key switch
   {
     "folder" => items.Where(i =>
     {
@@ -921,7 +926,7 @@ internal sealed class BitwardenCliService
     SshPrivateKey = ssh?["privateKey"]?.GetValue<string>(),
   };
 
-  private static Dictionary<string, CustomField> ParseCustomFields(JsonNode? fields)
+  internal static Dictionary<string, CustomField> ParseCustomFields(JsonNode? fields)
   {
     var result = new Dictionary<string, CustomField>(StringComparer.OrdinalIgnoreCase);
     if (fields is not JsonArray arr) return result;
