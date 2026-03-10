@@ -368,7 +368,14 @@ internal sealed class BitwardenCliService
           if (contextMatches.Count > 0)
           {
             var contextMatchIds = contextMatches.Select(i => i.Id).ToHashSet();
-            return [.. contextMatches, .. sorted.Where(i => !contextMatchIds.Contains(i.Id))];
+            var remainder = sorted
+                .Where(i => !contextMatchIds.Contains(i.Id))
+                .OrderByDescending(i => AccessTracker.IsLastCopied(i.Id) ? 1 : 0)
+                .ThenByDescending(i => i.Favorite ? 1 : 0)
+                .ThenByDescending(i => AccessTracker.GetLastAccess(i.Id))
+                .ThenByDescending(i => i.RevisionDate)
+                .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase);
+            return [.. contextMatches, .. remainder];
           }
         }
 
