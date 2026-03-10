@@ -15,9 +15,9 @@ namespace HoobiBitwardenCommandPaletteExtension.Helpers;
 
 internal static partial class VaultItemHelper
 {
-  internal static IconInfo GetIcon(BitwardenItem item) => item.Type switch
+  internal static IconInfo GetIcon(BitwardenItem item, bool showWebsiteIcons = true) => item.Type switch
   {
-    BitwardenItemType.Login => GetFaviconIcon(item.FirstUri),
+    BitwardenItemType.Login => showWebsiteIcons ? GetFaviconIcon(item.FirstUri) : new IconInfo("\uE774"),
     BitwardenItemType.SecureNote => new IconInfo("\uE70B"),
     BitwardenItemType.Card => new IconInfo("\uE8C7"),
     BitwardenItemType.Identity => new IconInfo("\uE77B"),
@@ -363,16 +363,27 @@ internal static partial class VaultItemHelper
   internal static IconInfo GetFaviconIcon(string? uri)
   {
     if (string.IsNullOrEmpty(uri))
-      return new IconInfo("\uE72E");
+      return new IconInfo("\uE774");
 
     try
     {
       var host = new Uri(uri).Host;
-      return new IconInfo($"https://icons.bitwarden.net/{host}/icon.png");
+      if (string.IsNullOrEmpty(host))
+        return new IconInfo("\uE774");
+
+      // Match Bitwarden desktop client behaviour:
+      //   - Cloud (no custom server): https://icons.bitwarden.net/{domain}/icon.png
+      //   - Self-hosted: {serverUrl}/icons/{domain}/icon.png
+      var serverUrl = BitwardenCliService.ServerUrl;
+      var iconUrl = string.IsNullOrEmpty(serverUrl)
+        ? $"https://icons.bitwarden.net/{host}/icon.png"
+        : $"{serverUrl}/icons/{host}/icon.png";
+
+      return FaviconService.GetOrQueue(host, iconUrl);
     }
     catch
     {
-      return new IconInfo("\uE72E");
+      return new IconInfo("\uE774");
     }
   }
 

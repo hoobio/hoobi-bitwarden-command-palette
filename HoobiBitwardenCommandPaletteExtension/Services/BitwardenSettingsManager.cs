@@ -17,6 +17,12 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         "Securely store your session key using Windows Credential Manager so you don't need to unlock each launch",
         false);
 
+    public ToggleSetting ShowWebsiteIcons { get; } = new(
+        "showWebsiteIcons",
+        "Show Website Icons",
+        "Download and display website icons for login items. Disable for privacy — a generic icon will be shown instead",
+        true);
+
     public ToggleSetting ShowWatchtowerTags { get; } = new(
         "showWatchtowerTags",
         "Show Watchtower Tags",
@@ -114,6 +120,7 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         TotpTagStyle.Value = "static";
         BackgroundRefresh.Value = "5";
         Settings.Add(RememberSession);
+        Settings.Add(ShowWebsiteIcons);
         Settings.Add(AutoLockTimeout);
         Settings.Add(ShowWatchtowerTags);
         Settings.Add(ContextAwareness);
