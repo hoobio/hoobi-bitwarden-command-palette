@@ -79,7 +79,7 @@ internal static partial class VaultItemHelper
     return items.ToArray();
   }
 
-  internal static Tag[] BuildTags(BitwardenItem item, bool showWatchtowerTags = true, ForegroundContext? context = null)
+  internal static Tag[] BuildTags(BitwardenItem item, bool showWatchtowerTags = true, ForegroundContext? context = null, bool showContextTag = true, bool showTotpTag = true)
   {
     var tags = new List<Tag>();
 
@@ -89,12 +89,12 @@ internal static partial class VaultItemHelper
     if (item.Favorite)
       tags.Add(new Tag("\u2605") { Foreground = ColorHelpers.FromRgb(0xFA, 0xCC, 0x6E) });
 
-    if (context != null && ContextAwarenessService.ContextScore(context, item) > 0)
+    if (showContextTag && context != null && ContextAwarenessService.ContextScore(context, item) > 0)
     {
       tags.Add(new Tag("Context") { Foreground = ColorHelpers.FromRgb(0x40, 0x9F, 0xFF) });
     }
 
-    if (item.HasTotp)
+    if (showTotpTag && item.HasTotp)
     {
       var totpTag = GetTotpTag(item.TotpSecret!);
       if (totpTag != null)
@@ -139,7 +139,7 @@ internal static partial class VaultItemHelper
         tags.Add(new Tag("Old") { Foreground = ColorHelpers.FromRgb(0xFF, 0xD1, 0x73) });
     }
 
-    if (item.Uris.Count > 0 && item.Uris.Any(u => u.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
+    if (item.Uris.Count > 0 && item.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
       tags.Add(new Tag("Insecure URL") { Foreground = ColorHelpers.FromRgb(0xF2, 0x87, 0x79) });
   }
 

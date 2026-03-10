@@ -125,37 +125,51 @@ internal static partial class ContextAwarenessService
       return false;
 
     var title = StripBrowserSuffix(window.WindowTitle, window.ProcessName);
+    var urlHost = !string.IsNullOrEmpty(window.BrowserUrl) ? ExtractHost(window.BrowserUrl) : null;
 
-    if (!string.IsNullOrEmpty(window.BrowserUrl))
+    foreach (var entry in item.Uris)
     {
-      var urlHost = ExtractHost(window.BrowserUrl);
-      if (urlHost != null)
-      {
-        foreach (var uri in item.Uris)
-        {
-          var itemHost = ExtractHost(uri);
-          if (itemHost != null && HostsMatch(urlHost, itemHost))
-            return true;
-        }
-      }
-    }
+      if (entry.Match == Models.UriMatchType.Never)
+        continue;
 
-    if (!string.IsNullOrEmpty(title))
-    {
-      // Match item URI hosts against browser title
-      foreach (var uri in item.Uris)
-      {
-        var host = ExtractHost(uri);
-        if (host != null && title.Contains(host, StringComparison.OrdinalIgnoreCase))
-          return true;
-      }
-
-      // Match vault item name against browser title (e.g., "GitHub" in "Dashboard · GitHub")
-      if (item.Name.Length >= 3 && title.Contains(item.Name, StringComparison.OrdinalIgnoreCase))
+      if (UriMatchesBrowserContext(entry, window.BrowserUrl, urlHost))
         return true;
     }
 
+    if (!string.IsNullOrEmpty(title) && item.Name.Length >= 3 && title.Contains(item.Name, StringComparison.OrdinalIgnoreCase))
+      return true;
+
     return false;
+  }
+
+  private static bool UriMatchesBrowserContext(Models.ItemUri entry, string? browserUrl, string? browserHost)
+  {
+    var itemHost = ExtractHost(entry.Uri);
+
+    return entry.Match switch
+    {
+      Models.UriMatchType.Exact =>
+          !string.IsNullOrEmpty(browserUrl) && NormalizeUrl(browserUrl) == NormalizeUrl(entry.Uri),
+
+      Models.UriMatchType.StartsWith =>
+          !string.IsNullOrEmpty(browserUrl) && NormalizeUrl(browserUrl).StartsWith(NormalizeUrl(entry.Uri), StringComparison.OrdinalIgnoreCase),
+
+      Models.UriMatchType.Host =>
+          browserHost != null && itemHost != null && browserHost.Equals(itemHost, StringComparison.OrdinalIgnoreCase),
+
+      Models.UriMatchType.RegularExpression =>
+          !string.IsNullOrEmpty(browserUrl) && System.Text.RegularExpressions.Regex.IsMatch(browserUrl, entry.Uri, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100)),
+
+      _ => // Default and Domain: subdomain-inclusive matching (eTLD+1)
+          browserHost != null && itemHost != null && HostsMatch(browserHost, itemHost),
+    };
+  }
+
+  private static string NormalizeUrl(string url)
+  {
+    if (!url.Contains("://"))
+      url = "https://" + url;
+    return url.TrimEnd('/');
   }
 
   private static string? StripBrowserSuffix(string? title, string? processName)
@@ -195,9 +209,12 @@ internal static partial class ContextAwarenessService
     // Match URI host domain base against process name (e.g., process "discord" → host "discord.com")
     if (item.Type == Models.BitwardenItemType.Login && !string.IsNullOrEmpty(processName))
     {
-      foreach (var uri in item.Uris)
+      foreach (var entry in item.Uris)
       {
-        var host = ExtractHost(uri);
+        if (entry.Match == Models.UriMatchType.Never)
+          continue;
+
+        var host = ExtractHost(entry.Uri);
         if (host != null)
         {
           var domainBase = host.Split('.')[0];

@@ -340,7 +340,7 @@ internal sealed class BitwardenCliService
     return string.IsNullOrEmpty(error) ? "Failed to set server URL" : error;
   }
 
-  public List<BitwardenItem> SearchCached(string? query = null, ForegroundContext? context = null)
+  public List<BitwardenItem> SearchCached(string? query = null, ForegroundContext? context = null, int maxContextItems = 0)
   {
     lock (_cacheLock)
     {
@@ -352,13 +352,25 @@ internal sealed class BitwardenCliService
         results = ApplyFilter(results, filter);
 
       if (string.IsNullOrWhiteSpace(textQuery))
-        return [.. results
+      {
+        var sorted = results
             .OrderByDescending(i => AccessTracker.IsLastCopied(i.Id) ? 1 : 0)
             .ThenByDescending(i => i.Favorite ? 1 : 0)
             .ThenByDescending(i => ContextBoost(i, context))
             .ThenByDescending(i => AccessTracker.GetLastAccess(i.Id))
             .ThenByDescending(i => i.RevisionDate)
-            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)];
+            .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (maxContextItems > 0 && context != null)
+        {
+          var contextMatches = sorted.Where(i => ContextBoost(i, context) > 0).Take(maxContextItems).ToList();
+          if (contextMatches.Count > 0)
+            return contextMatches;
+        }
+
+        return sorted;
+      }
 
       var wordBoundaryRegex = new Regex(@"\b" + Regex.Escape(textQuery) + @"\b", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking);
       return results
@@ -441,7 +453,7 @@ internal sealed class BitwardenCliService
       return name != null && name.Contains(filter.Value, StringComparison.OrdinalIgnoreCase);
     }),
     "url" or "host" => items.Where(i =>
-        i.Type == BitwardenItemType.Login && i.Uris.Any(u => u.Contains(filter.Value, StringComparison.OrdinalIgnoreCase))),
+        i.Type == BitwardenItemType.Login && i.Uris.Any(u => u.Uri.Contains(filter.Value, StringComparison.OrdinalIgnoreCase))),
     "type" => items.Where(i => i.Type.ToString().Equals(filter.Value, StringComparison.OrdinalIgnoreCase)
         || ((int)i.Type).ToString(System.Globalization.CultureInfo.InvariantCulture) == filter.Value),
     "org" => items.Where(i => i.OrganizationId != null && i.OrganizationId.Contains(filter.Value, StringComparison.OrdinalIgnoreCase)),
@@ -541,7 +553,7 @@ internal sealed class BitwardenCliService
     {
       BitwardenItemType.Login =>
           (item.Username?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
-          || item.Uris.Any(u => u.Contains(query, StringComparison.OrdinalIgnoreCase)),
+          || item.Uris.Any(u => u.Uri.Contains(query, StringComparison.OrdinalIgnoreCase)),
       BitwardenItemType.Card =>
           (item.CardholderName?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
           || (item.CardBrand?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false),
@@ -718,9 +730,18 @@ internal sealed class BitwardenCliService
   private static BitwardenItem ParseLogin(JsonNode? login, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, string> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
   {
     var uris = login?["uris"]?.AsArray()
-        ?.Select(u => u?["uri"]?.GetValue<string>())
-        .Where(u => !string.IsNullOrEmpty(u))
-        .Cast<string>()
+        ?.Select(u =>
+        {
+          var uri = u?["uri"]?.GetValue<string>();
+          if (string.IsNullOrEmpty(uri)) return null;
+          var matchVal = u?["match"];
+          var match = matchVal is null
+              ? UriMatchType.Default
+              : (UriMatchType)matchVal.GetValue<int>();
+          return new ItemUri(uri, match);
+        })
+        .Where(u => u != null)
+        .Cast<ItemUri>()
         .ToList() ?? [];
 
     var passwordRevision = DateTime.TryParse(login?["passwordRevisionDate"]?.GetValue<string>(), out var prd) ? (DateTime?)prd.ToUniversalTime() : null;

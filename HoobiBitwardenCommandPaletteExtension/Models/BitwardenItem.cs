@@ -13,6 +13,19 @@ internal enum BitwardenItemType
   SshKey = 5,
 }
 
+internal enum UriMatchType
+{
+  Default = -1, // null in JSON — behaves like Domain
+  Domain = 0,
+  Host = 1,
+  StartsWith = 2,
+  Exact = 3,
+  RegularExpression = 4,
+  Never = 5,
+}
+
+internal sealed record ItemUri(string Uri, UriMatchType Match);
+
 internal sealed class BitwardenItem
 {
   public string Id { get; init; } = string.Empty;
@@ -30,8 +43,8 @@ internal sealed class BitwardenItem
   public string? Password { get; init; }
   public bool HasTotp { get; init; }
   public string? TotpSecret { get; init; }
-  public List<string> Uris { get; init; } = [];
-  public string? FirstUri => Uris.Count > 0 ? Uris[0] : null;
+  public List<ItemUri> Uris { get; init; } = [];
+  public string? FirstUri => Uris.Count > 0 ? Uris[0].Uri : null;
   public DateTime? PasswordRevisionDate { get; init; }
 
   // Card
