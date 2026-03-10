@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.6.1](https://github.com/hoobio/hoobi-bitwarden-command-palette/compare/v1.6.0...v1.6.1) (2026-03-10)
+
+
+### Bug Fixes
+
+* add website icon caching and fix loading indicator during vault actions ([#71](https://github.com/hoobio/hoobi-bitwarden-command-palette/issues/71)) ([5cdf91e](https://github.com/hoobio/hoobi-bitwarden-command-palette/commit/5cdf91e347ff85607266e3bcfb78362af03e5cd2))
+
+
+### Miscellaneous Chores
+
+* rename store title to Command Palette Extension for Bitwarden ([#68](https://github.com/hoobio/hoobi-bitwarden-command-palette/issues/68)) ([92811d8](https://github.com/hoobio/hoobi-bitwarden-command-palette/commit/92811d870b43ac842d30da3b12ba9220d36da5ec))
+
 ## [1.6.0](https://github.com/hoobio/hoobi-bitwarden-command-palette/compare/v1.5.2...v1.6.0) (2026-03-10)
 
 
