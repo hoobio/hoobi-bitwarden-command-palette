@@ -199,6 +199,11 @@ jobs:
       contents: write
       pull-requests: read
     steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Get next version from release PR
         id: version
         env:
@@ -224,6 +229,24 @@ jobs:
             echo "No release PR found, using version.txt: $VERSION"
           fi
 
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION_PREFIX="v${{ steps.version.outputs.version }}-pre."
+          # Find the most recent pre-release tag for this version, or fall back to last stable tag
+          PREV_TAG=$(git tag --sort=-version:refname | grep -m1 "^${VERSION_PREFIX}" || true)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git tag --sort=-version:refname | grep -m1 '^v[0-9]' || true)
+          fi
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s" --no-merges)
+          else
+            NOTES=$(git log --pretty=format:"- %s" --no-merges -20)
+          fi
+          # Write to file to safely handle multi-line output
+          echo "$NOTES" > /tmp/release_notes.txt
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Download x64 artifacts
         uses: actions/download-artifact@v8
         with:
@@ -243,7 +266,7 @@ jobs:
           name: v${{ steps.version.outputs.version }}-pre.${{ github.run_number }}
           prerelease: true
           make_latest: false
-          generate_release_notes: true
+          body_path: /tmp/release_notes.txt
           files: |
             release/**/*.msix
 
