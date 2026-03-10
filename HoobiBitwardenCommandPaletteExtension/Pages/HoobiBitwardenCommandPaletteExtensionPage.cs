@@ -27,7 +27,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     private ForegroundContext? _context;
     private DateTime _lastContextCapture = DateTime.MinValue;
     private Timer? _totpTimer;
-    private List<(ListItem ListItem, BitwardenItem VaultItem)>? _totpItems;
+    private List<(ListItem ListItem, BitwardenItem VaultItem, bool AllowContextTag)>? _totpItems;
 
     public HoobiBitwardenCommandPaletteExtensionPage(BitwardenCliService service, BitwardenSettingsManager? settings = null)
     {
@@ -298,7 +298,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         var showWatchtower = _settings?.ShowWatchtowerTags.Value != false;
         var showContextTag = _settings?.ShowContextTag.Value != false;
         var showTotpTag = _settings?.ShowTotpTag.Value != false;
-        var totpTracked = new List<(ListItem, BitwardenItem)>();
+        var totpTracked = new List<(ListItem, BitwardenItem, bool)>();
 
         var contextLimit = int.TryParse(_settings?.ContextItemLimit.Value, out var lv) ? lv : 3;
         var contextTagsUsed = 0;
@@ -320,7 +320,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
                 var listItem = BuildListItem(item, showWatchtower, allowContextTag, showTotpTag);
                 list.Add(listItem);
                 if (showTotpTag && item.HasTotp)
-                    totpTracked.Add((listItem, item));
+                    totpTracked.Add((listItem, item, allowContextTag));
             }
         }
 
@@ -373,10 +373,9 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         if (items == null) return;
 
         var showWatchtower = _settings?.ShowWatchtowerTags.Value != false;
-        var showContextTag = _settings?.ShowContextTag.Value != false;
         var showTotpTag = _settings?.ShowTotpTag.Value != false;
-        foreach (var (listItem, vaultItem) in items)
-            listItem.Tags = VaultItemHelper.BuildTags(vaultItem, showWatchtower, _context, showContextTag, showTotpTag);
+        foreach (var (listItem, vaultItem, allowContextTag) in items)
+            listItem.Tags = VaultItemHelper.BuildTags(vaultItem, showWatchtower, _context, allowContextTag, showTotpTag);
     }
 
     private void OnItemAccessed()
