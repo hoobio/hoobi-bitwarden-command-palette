@@ -26,6 +26,8 @@ internal enum UriMatchType
 
 internal sealed record ItemUri(string Uri, UriMatchType Match);
 
+internal sealed record CustomField(string Value, bool IsHidden);
+
 internal sealed class BitwardenItem
 {
   public string Id { get; init; } = string.Empty;
@@ -76,8 +78,8 @@ internal sealed class BitwardenItem
   public string? SshPrivateKey { get; init; }
 
   // Custom fields
-  public Dictionary<string, string> CustomFields { get; init; } = [];
-  public string? SshHost => CustomFields.GetValueOrDefault("host");
+  public Dictionary<string, CustomField> CustomFields { get; init; } = [];
+  public string? SshHost => CustomFields.TryGetValue("host", out var h) ? h.Value : null;
 
   public string Subtitle => Type switch
   {

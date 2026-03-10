@@ -77,11 +77,11 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         "Maximum number of context-matched vault items to show when no search is typed (0 = unlimited)",
         [
             new("1 item", "1"),
-          new("2 items", "2"),
-          new("3 items", "3"),
-          new("5 items", "5"),
-          new("10 items", "10"),
-          new("Unlimited", "0"),
+            new("2 items", "2"),
+            new("3 items", "3"),
+            new("5 items", "5"),
+            new("10 items", "10"),
+            new("Unlimited", "0"),
         ]);
     public ChoiceSetSetting BackgroundRefresh { get; } = new(
         "backgroundRefresh",
@@ -100,10 +100,10 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         "How long to wait before clearing sensitive clipboard data",
         [
             new("10 seconds", "10"),
-          new("15 seconds", "15"),
-          new("30 seconds", "30"),
-          new("60 seconds", "60"),
-          new("2 minutes", "120"),
+            new("15 seconds", "15"),
+            new("30 seconds", "30"),
+            new("60 seconds", "60"),
+            new("2 minutes", "120"),
         ]);
 
     public BitwardenSettingsManager()

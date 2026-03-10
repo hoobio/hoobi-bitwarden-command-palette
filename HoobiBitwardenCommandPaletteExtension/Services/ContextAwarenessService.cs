@@ -157,10 +157,11 @@ internal static partial class ContextAwarenessService
       Models.UriMatchType.Host =>
           browserHost != null && itemHost != null && browserHost.Equals(itemHost, StringComparison.OrdinalIgnoreCase),
 
+      // Vault URI used as regex pattern (set by vault owner, not external input). 100ms timeout mitigates ReDoS.
       Models.UriMatchType.RegularExpression =>
           !string.IsNullOrEmpty(browserUrl) && System.Text.RegularExpressions.Regex.IsMatch(browserUrl, entry.Uri, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(100)),
 
-      _ => // Default and Domain: subdomain-inclusive matching (eTLD+1)
+      _ => // Default and Domain: subdomain-inclusive host matching
           browserHost != null && itemHost != null && HostsMatch(browserHost, itemHost),
     };
   }
@@ -172,14 +173,19 @@ internal static partial class ContextAwarenessService
     return url.TrimEnd('/');
   }
 
+  // Keep in sync with BrowserProcessNames below (display names for title stripping vs exe names for detection).
+  private static readonly string[] BrowserDisplayNames =
+  [
+    "Google Chrome", "Mozilla Firefox", "Microsoft Edge", "Brave", "Opera", "Vivaldi", "Arc", "Thorium", "Waterfox", "LibreWolf"
+  ];
+
   private static string? StripBrowserSuffix(string? title, string? processName)
   {
     if (string.IsNullOrEmpty(title))
       return null;
 
     // Browsers append " - Browser Name" or " — Browser Name" to the title
-    string[] browserNames = ["Google Chrome", "Mozilla Firefox", "Microsoft Edge", "Brave", "Opera", "Vivaldi", "Arc", "Thorium", "Waterfox", "LibreWolf"];
-    foreach (var name in browserNames)
+    foreach (var name in BrowserDisplayNames)
     {
       var dashSuffix = " - " + name;
       if (title.EndsWith(dashSuffix, StringComparison.OrdinalIgnoreCase))
@@ -264,6 +270,9 @@ internal static partial class ContextAwarenessService
     catch { return null; }
   }
 
+  // Suffix-based subdomain matching (not true eTLD+1). Can false-positive on public suffixes
+  // like .co.uk, but true eTLD+1 requires a public suffix list dependency. Acceptable since
+  // this only affects context boosting priority, not authentication or access control.
   private static bool HostsMatch(string a, string b)
   {
     if (a.Equals(b, StringComparison.OrdinalIgnoreCase))

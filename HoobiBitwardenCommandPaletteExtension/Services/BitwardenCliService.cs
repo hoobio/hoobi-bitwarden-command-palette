@@ -91,9 +91,13 @@ internal sealed class BitwardenCliService
 
   private async void OnAutoLockTick(object? _)
   {
-    AutoLocking?.Invoke();
-    await LockAsync();
-    AutoLocked?.Invoke();
+    try
+    {
+      AutoLocking?.Invoke();
+      await LockAsync();
+      AutoLocked?.Invoke();
+    }
+    catch { }
   }
 
   public void SetSession(string sessionKey) => _sessionKey = sessionKey;
@@ -153,6 +157,7 @@ internal sealed class BitwardenCliService
     return status;
   }
 
+  // Intentionally synchronous: runs once at startup on a fast-exit 'bw --version' process.
   private static bool IsCliAvailable()
   {
     try
@@ -385,7 +390,7 @@ internal sealed class BitwardenCliService
 
     if (process.ExitCode == 0)
     {
-      ServerUrl = url.TrimEnd('/');
+      ServerUrl = sanitizedUrl.TrimEnd('/');
       StatusChanged?.Invoke();
       return null;
     }
@@ -666,8 +671,9 @@ internal sealed class BitwardenCliService
       var count = await process.StandardError.ReadAsync(buffer.AsMemory(), token);
       if (count == 0) break;
       sb.Append(buffer, 0, count);
-      if (sb.ToString().Contains("Two-step", StringComparison.OrdinalIgnoreCase))
-        return (sb.ToString(), true);
+      var text = sb.ToString();
+      if (text.Contains("Two-step", StringComparison.OrdinalIgnoreCase))
+        return (text, true);
     }
     return (sb.ToString(), false);
   }
@@ -798,7 +804,7 @@ internal sealed class BitwardenCliService
     return items;
   }
 
-  private static BitwardenItem ParseLogin(JsonNode? login, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, string> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
+  private static BitwardenItem ParseLogin(JsonNode? login, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, CustomField> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
   {
     var uris = login?["uris"]?.AsArray()
         ?.Select(u =>
@@ -839,7 +845,7 @@ internal sealed class BitwardenCliService
     };
   }
 
-  private static BitwardenItem ParseCard(JsonNode? card, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, string> customFields, bool favorite, string? folderId, string? organizationId, int reprompt) => new()
+  private static BitwardenItem ParseCard(JsonNode? card, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, CustomField> customFields, bool favorite, string? folderId, string? organizationId, int reprompt) => new()
   {
     Id = id,
     Name = name,
@@ -859,7 +865,7 @@ internal sealed class BitwardenCliService
     CardCode = card?["code"]?.GetValue<string>(),
   };
 
-  private static BitwardenItem ParseIdentity(JsonNode? id_node, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, string> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
+  private static BitwardenItem ParseIdentity(JsonNode? id_node, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, CustomField> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
   {
     var parts = new[] { id_node?["firstName"]?.GetValue<string>(), id_node?["middleName"]?.GetValue<string>(), id_node?["lastName"]?.GetValue<string>() };
     var fullName = string.Join(" ", parts.Where(p => !string.IsNullOrEmpty(p)));
@@ -895,7 +901,7 @@ internal sealed class BitwardenCliService
     };
   }
 
-  private static BitwardenItem ParseSshKey(JsonNode? ssh, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, string> customFields, bool favorite, string? folderId, string? organizationId, int reprompt) => new()
+  private static BitwardenItem ParseSshKey(JsonNode? ssh, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, CustomField> customFields, bool favorite, string? folderId, string? organizationId, int reprompt) => new()
   {
     Id = id,
     Name = name,
@@ -912,17 +918,18 @@ internal sealed class BitwardenCliService
     SshPrivateKey = ssh?["privateKey"]?.GetValue<string>(),
   };
 
-  private static Dictionary<string, string> ParseCustomFields(JsonNode? fields)
+  private static Dictionary<string, CustomField> ParseCustomFields(JsonNode? fields)
   {
-    var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    var result = new Dictionary<string, CustomField>(StringComparer.OrdinalIgnoreCase);
     if (fields is not JsonArray arr) return result;
 
     foreach (var field in arr)
     {
       var fieldName = field?["name"]?.GetValue<string>();
       var fieldValue = field?["value"]?.GetValue<string>();
+      var fieldType = field?["type"]?.GetValue<int>() ?? 0;
       if (!string.IsNullOrEmpty(fieldName) && fieldValue != null)
-        result.TryAdd(fieldName, fieldValue);
+        result.TryAdd(fieldName, new CustomField(fieldValue, fieldType == 1));
     }
 
     return result;

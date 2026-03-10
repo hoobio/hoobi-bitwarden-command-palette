@@ -339,19 +339,23 @@ internal static partial class VaultItemHelper
     if (item.CustomFields.Count == 0)
       return;
 
-    foreach (var (fieldName, fieldValue) in item.CustomFields)
+    foreach (var (fieldName, field) in item.CustomFields)
     {
-      if (string.IsNullOrEmpty(fieldValue))
+      if (string.IsNullOrEmpty(field.Value))
         continue;
 
       // Skip the 'host' custom field as it's handled by SSH context items
       if (item.Type == BitwardenItemType.SshKey && fieldName.Equals("host", StringComparison.OrdinalIgnoreCase))
         continue;
 
-      items.Add(new CommandContextItem(Track(id, CopyNonSensitive(fieldValue, fieldName)))
+      var copyCmd = field.IsHidden
+          ? CopySensitive(field.Value, fieldName)
+          : CopyNonSensitive(field.Value, fieldName);
+
+      items.Add(new CommandContextItem(Track(id, copyCmd))
       {
         Title = $"Copy \"{fieldName}\"",
-        Icon = new IconInfo("\uE8C8"),
+        Icon = new IconInfo(field.IsHidden ? "\uE72E" : "\uE8C8"),
       });
     }
   }

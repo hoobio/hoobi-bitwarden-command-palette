@@ -77,6 +77,9 @@ internal static class SessionStore
     [MarshalAs(UnmanagedType.LPWStr)] public string? UserName;
   }
 
+  // NOTE: Using legacy [DllImport] instead of [LibraryImport] because the CREDENTIAL struct
+  // has [MarshalAs(UnmanagedType.LPWStr)] fields and ref-struct parameters that require
+  // non-trivial rework to be compatible with the source-generated marshaller.
   [DllImport("advapi32.dll", EntryPoint = "CredWriteW", CharSet = CharSet.Unicode, SetLastError = true)]
   private static extern bool CredWrite(ref CREDENTIAL credential, int flags);
 
