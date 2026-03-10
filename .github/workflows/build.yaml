@@ -8,6 +8,7 @@ on:
       - "**.csproj"
       - "*.props"
       - "*.targets"
+      - ".editorconfig"
       - "**/Package.appxmanifest"
       - "version.txt"
       - ".github/workflows/build.yaml"
@@ -20,6 +21,7 @@ on:
       - "**.csproj"
       - "*.props"
       - "*.targets"
+      - ".editorconfig"
       - "**/Package.appxmanifest"
       - "version.txt"
       - ".github/workflows/build.yaml"
@@ -44,7 +46,91 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
+  lint-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore -p:Platform=x64
+
+      - name: Lint (build with TreatWarningsAsErrors)
+        run: dotnet build -c Release -p:Platform=x64 --no-restore
+
+      - name: Test with coverage
+        run: >-
+          dotnet test -p:Platform=x64 --no-build -c Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ${{ github.workspace }}/coverage
+
+      - name: Generate coverage report
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: ${{ github.workspace }}/coverage/**/coverage.cobertura.xml
+          targetdir: ${{ github.workspace }}/coverage/report
+          reporttypes: HtmlInline;Cobertura;MarkdownSummaryGithub
+
+      - name: Publish coverage summary to job
+        run: |
+          $summary = Get-Content "${{ github.workspace }}/coverage/report/SummaryGithub.md" -Raw
+          $summary | Out-File -Append $env:GITHUB_STEP_SUMMARY
+        shell: pwsh
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: ${{ github.workspace }}/coverage/report/
+
+      - name: Enforce coverage threshold on changed files
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: |
+          $changedFiles = git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.cs' |
+            Where-Object { $_ -notmatch '\.Tests[\\/]' } |
+            ForEach-Object { (Resolve-Path $_).Path }
+
+          if (-not $changedFiles) {
+            Write-Host "No C# source files changed in this PR, skipping coverage check"
+            exit 0
+          }
+
+          [xml]$cobertura = Get-Content "${{ github.workspace }}/coverage/report/Cobertura.xml"
+          $totalLines = 0
+          $coveredLines = 0
+
+          foreach ($pkg in $cobertura.coverage.packages.package) {
+            foreach ($cls in $pkg.classes.class) {
+              $file = $cls.filename
+              if ($changedFiles | Where-Object { $file -eq $_ }) {
+                foreach ($line in $cls.lines.line) {
+                  $totalLines++
+                  if ([int]$line.hits -gt 0) { $coveredLines++ }
+                }
+              }
+            }
+          }
+
+          if ($totalLines -eq 0) {
+            Write-Host "No coverable lines found in changed files, skipping"
+            exit 0
+          }
+
+          $coverage = [math]::Round(($coveredLines / $totalLines) * 100, 2)
+          $threshold = 60
+          Write-Host "Changed-file coverage: $coverage% ($coveredLines/$totalLines lines, threshold: $threshold%)"
+          if ($coverage -lt $threshold) {
+            Write-Host "::error::Coverage on changed files ($coverage%) is below the $threshold% threshold"
+            exit 1
+          }
+
   build:
+    needs: [lint-and-test]
     runs-on: windows-latest
     strategy:
       matrix:
