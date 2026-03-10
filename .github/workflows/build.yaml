@@ -246,3 +246,20 @@ jobs:
           generate_release_notes: true
           files: |
             release/**/*.msix
+
+      - name: Prune old pre-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP: 3
+        run: |
+          VERSION_PREFIX="v${{ steps.version.outputs.version }}-pre."
+          # List all pre-releases matching current version prefix, sorted newest first
+          RELEASES=$(gh release list \
+            --repo ${{ github.repository }} \
+            --limit 100 \
+            --json tagName,isPrerelease \
+            --jq "[.[] | select(.isPrerelease == true and (.tagName | startswith(\"$VERSION_PREFIX\")))] | sort_by(.tagName) | reverse | .[${KEEP}:] | .[].tagName")
+          for TAG in $RELEASES; do
+            echo "Deleting old pre-release: $TAG"
+            gh release delete "$TAG" --repo ${{ github.repository }} --yes --cleanup-tag
+          done
