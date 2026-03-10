@@ -35,6 +35,12 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         "Display a 'Context' tag on vault items that match the foreground application",
         false);
 
+    public ToggleSetting ShowPasskeyTag { get; } = new(
+        "showPasskeyTag",
+        "Show Passkey Tag",
+        "Display a 'Passkey' tag on vault items that support passwordless sign-in",
+        true);
+
     public ChoiceSetSetting TotpTagStyle { get; } = new(
         "totpTagStyle",
         "TOTP Tag Style",
@@ -86,6 +92,7 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         Settings.Add(ShowWatchtowerTags);
         Settings.Add(ContextAwareness);
         Settings.Add(ShowContextTag);
+        Settings.Add(ShowPasskeyTag);
         Settings.Add(TotpTagStyle);
         Settings.Add(ContextItemLimit);
         Settings.Add(AutoClearClipboard);

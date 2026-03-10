@@ -79,7 +79,7 @@ internal static partial class VaultItemHelper
     return items.ToArray();
   }
 
-  internal static Tag[] BuildTags(BitwardenItem item, bool showWatchtowerTags = true, ForegroundContext? context = null, bool showContextTag = true, string totpTagStyle = "off")
+  internal static Tag[] BuildTags(BitwardenItem item, bool showWatchtowerTags = true, ForegroundContext? context = null, bool showContextTag = true, string totpTagStyle = "off", bool showPasskeyTag = true)
   {
     var tags = new List<Tag>();
 
@@ -100,6 +100,9 @@ internal static partial class VaultItemHelper
       if (totpTag != null)
         tags.Add(totpTag);
     }
+
+    if (showPasskeyTag && item.HasPasskey)
+      tags.Add(new Tag("Passkey") { Foreground = ColorHelpers.FromRgb(0xA0, 0xC4, 0xFF) });
 
     if (showWatchtowerTags)
       AddWatchtowerTags(tags, item);

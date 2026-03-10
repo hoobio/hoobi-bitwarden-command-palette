@@ -462,7 +462,8 @@ internal sealed class BitwardenCliService
     "org" => items.Where(i => i.OrganizationId != null && i.OrganizationId.Contains(filter.Value, StringComparison.OrdinalIgnoreCase)),
     "has" => filter.Value switch
     {
-      "totp" or "otp" => items.Where(i => i.HasTotp),
+      "totp" or "otp" or "2fa" or "mfa" => items.Where(i => i.HasTotp),
+      "passkey" or "fido2" or "webauthn" or "passwordless" => items.Where(i => i.HasPasskey),
       "password" or "pw" => items.Where(i => !string.IsNullOrEmpty(i.Password)),
       "url" or "uri" => items.Where(i => i.Uris.Count > 0),
       "notes" or "note" => items.Where(i => !string.IsNullOrEmpty(i.Notes)),
@@ -475,12 +476,12 @@ internal sealed class BitwardenCliService
       "favorite" or "fav" => items.Where(i => i.Favorite),
       "weak" => items.Where(i => i.Type == BitwardenItemType.Login
           && !string.IsNullOrEmpty(i.Password) && i.Password!.Length < 8),
-      "old" => items.Where(i => i.Type == BitwardenItemType.Login
+      "old" or "stale" => items.Where(i => i.Type == BitwardenItemType.Login
           && !string.IsNullOrEmpty(i.Password)
           && DateTime.UtcNow - (i.PasswordRevisionDate ?? i.RevisionDate) > TimeSpan.FromDays(365)),
-      "insecure" => items.Where(i => i.Type == BitwardenItemType.Login
+      "insecure" or "http" => items.Where(i => i.Type == BitwardenItemType.Login
           && i.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase))),
-      "watchtower" => items.Where(i => i.Type == BitwardenItemType.Login && (
+      "watchtower" or "flagged" => items.Where(i => i.Type == BitwardenItemType.Login && (
           (!string.IsNullOrEmpty(i.Password) && i.Password!.Length < 8)
           || (!string.IsNullOrEmpty(i.Password) && DateTime.UtcNow - (i.PasswordRevisionDate ?? i.RevisionDate) > TimeSpan.FromDays(365))
           || i.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))),
@@ -776,6 +777,7 @@ internal sealed class BitwardenCliService
       Password = login?["password"]?.GetValue<string>(),
       HasTotp = !string.IsNullOrEmpty(login?["totp"]?.GetValue<string>()),
       TotpSecret = login?["totp"]?.GetValue<string>(),
+      HasPasskey = login?["fido2Credentials"] is JsonArray fido && fido.Count > 0,
       Uris = uris,
       PasswordRevisionDate = passwordRevision,
     };

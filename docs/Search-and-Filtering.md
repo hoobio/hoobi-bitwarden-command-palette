@@ -14,7 +14,8 @@ Use prefix syntax to narrow results. Filters can be combined freely.
 |--------|---------|-------------|
 | `is:fav` / `is:favorite` | `is:fav github` | Show only favorite items |
 | `folder:<name>` | `folder:Work` | Filter by folder name (partial match) |
-| `has:totp` / `has:otp` | `has:totp` | Items with TOTP configured |
+| `has:totp` / `has:otp` / `has:2fa` / `has:mfa` | `has:totp` | Items with TOTP configured |
+| `has:passkey` / `has:fido2` / `has:webauthn` / `has:passwordless` | `has:passkey` | Items with a passkey configured |
 | `has:password` | `has:password` | Items with a password set |
 | `has:url` | `has:url` | Items with at least one URI |
 | `has:notes` | `has:notes` | Items with notes |
@@ -22,9 +23,9 @@ Use prefix syntax to narrow results. Filters can be combined freely.
 | `type:<type>` | `type:login` | Filter by item type |
 | `org:<id>` | `org:myorg` | Filter by organization |
 | `is:weak` | `is:weak` | Logins with a password shorter than 8 characters |
-| `is:old` | `is:old` | Logins whose password hasn't changed in over a year |
-| `is:insecure` | `is:insecure` | Logins with an `http://` URI |
-| `is:watchtower` | `is:watchtower` | Any login triggering a Watchtower warning |
+| `is:old` / `is:stale` | `is:old` | Logins whose password hasn't changed in over a year |
+| `is:insecure` / `is:http` | `is:insecure` | Logins with an `http://` URI |
+| `is:watchtower` / `is:flagged` | `is:watchtower` | Any login triggering a Watchtower warning |
 
 ### Item Types
 

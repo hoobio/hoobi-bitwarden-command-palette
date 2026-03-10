@@ -43,6 +43,7 @@ internal sealed class BitwardenItem
   public string? Password { get; init; }
   public bool HasTotp { get; init; }
   public string? TotpSecret { get; init; }
+  public bool HasPasskey { get; init; }
   public List<ItemUri> Uris { get; init; } = [];
   public string? FirstUri => Uris.Count > 0 ? Uris[0].Uri : null;
   public DateTime? PasswordRevisionDate { get; init; }
