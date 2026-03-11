@@ -27,6 +27,9 @@ BundleArtifacts/
 *.appxupload
 *.msixupload
 
+## Test coverage
+coverage/
+
 ## Build outputs
 [Dd]ebug/
 [Rr]elease/

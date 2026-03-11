@@ -16,5 +16,15 @@
     <PackageVersion Include="Shmuelie.WinRTServer" Version="2.1.1" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.2.0-beta.556" />
     <PackageVersion Include="System.Text.Json" Version="9.0.8" />
+
+    <!-- AI sloppiness + security analyzers -->
+    <PackageVersion Include="Meziantou.Analyzer" Version="2.0.187" />
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.12.19" />
+
+    <!-- Test packages -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.0.2" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
   </ItemGroup>
 </Project>
