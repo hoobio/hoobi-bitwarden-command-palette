@@ -8,6 +8,7 @@ on:
       - "**.csproj"
       - "*.props"
       - "*.targets"
+      - ".editorconfig"
       - "**/Package.appxmanifest"
       - "version.txt"
       - ".github/workflows/build.yaml"
@@ -20,6 +21,7 @@ on:
       - "**.csproj"
       - "*.props"
       - "*.targets"
+      - ".editorconfig"
       - "**/Package.appxmanifest"
       - "version.txt"
       - ".github/workflows/build.yaml"
@@ -43,6 +45,148 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GH_PAT }}
+
+  lint-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore -p:Platform=x64
+
+      - name: Lint (build with TreatWarningsAsErrors)
+        run: dotnet build -c Release -p:Platform=x64 --no-restore
+
+      - name: Test with coverage
+        run: >-
+          dotnet test -p:Platform=x64 --no-build -c Release
+          --collect:"XPlat Code Coverage"
+          --results-directory ${{ github.workspace }}/coverage
+
+      - name: Generate coverage report
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: ${{ github.workspace }}/coverage/**/coverage.cobertura.xml
+          targetdir: ${{ github.workspace }}/coverage/report
+          reporttypes: HtmlInline;Cobertura;MarkdownSummaryGithub
+
+      - name: Publish coverage summary to job
+        run: |
+          $summary = Get-Content "${{ github.workspace }}/coverage/report/SummaryGithub.md" -Raw
+          $summary | Out-File -Append $env:GITHUB_STEP_SUMMARY
+        shell: pwsh
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: ${{ github.workspace }}/coverage/report/
+
+      - name: Enforce coverage threshold on changed files
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Patterns excluded from threshold — defined in .github/coverage-exclusions.json
+          $exclusions = Get-Content "${{ github.workspace }}/.github/coverage-exclusions.json" | ConvertFrom-Json
+          $excludeFromThreshold = $exclusions | Select-Object -ExpandProperty pattern
+
+          $changedFiles = git diff --name-only origin/${{ github.base_ref }}...HEAD -- '*.cs' |
+            Where-Object { $_ -notmatch '\.Tests[\\/]' } |
+            ForEach-Object { (Resolve-Path $_).Path }
+
+          if (-not $changedFiles) {
+            Write-Host "No C# source files changed in this PR, skipping coverage check"
+            exit 0
+          }
+
+          [xml]$cobertura = Get-Content "${{ github.workspace }}/coverage/report/Cobertura.xml"
+          $fileMap = @{}
+
+          foreach ($pkg in $cobertura.coverage.packages.package) {
+            foreach ($cls in $pkg.classes.class) {
+              $file = $cls.filename
+              if ($changedFiles | Where-Object { $file -eq $_ }) {
+                $rel = ($file -replace [regex]::Escape("${{ github.workspace }}$([IO.Path]::DirectorySeparatorChar)"), '')
+                if (-not $fileMap.ContainsKey($rel)) { $fileMap[$rel] = @{ Covered=0; Total=0 } }
+                foreach ($line in $cls.lines.line) {
+                  $fileMap[$rel].Total++
+                  if ([int]$line.hits -gt 0) { $fileMap[$rel].Covered++ }
+                }
+              }
+            }
+          }
+
+          if ($fileMap.Count -eq 0) {
+            Write-Host "No coverable lines found in changed files, skipping"
+            exit 0
+          }
+
+          # Build per-file stats — capture $fileKey before nesting to avoid $_ rebinding
+          $fileStats = $fileMap.GetEnumerator() | ForEach-Object {
+            $pct = if ($_.Value.Total -gt 0) { [math]::Round(($_.Value.Covered / $_.Value.Total) * 100, 1) } else { 0 }
+            $fileKey = $_.Key
+            $excluded = ($excludeFromThreshold | Where-Object { $fileKey -match $_ }).Count -gt 0
+            [pscustomobject]@{ File=$_.Key; Covered=$_.Value.Covered; Total=$_.Value.Total; Pct=$pct; Excluded=$excluded }
+          }
+
+          # Calculate threshold only on non-excluded files
+          $thresholdFiles = $fileStats | Where-Object { -not $_.Excluded }
+          $thresholdTotal = ($thresholdFiles | Measure-Object -Property Total -Sum).Sum
+          $thresholdCovered = ($thresholdFiles | Measure-Object -Property Covered -Sum).Sum
+          $thresholdPct = if ($thresholdTotal -gt 0) { [math]::Round(($thresholdCovered / $thresholdTotal) * 100, 2) } else { 100 }
+
+          $allTotal = ($fileStats | Measure-Object -Property Total -Sum).Sum
+          $allCovered = ($fileStats | Measure-Object -Property Covered -Sum).Sum
+          $allPct = if ($allTotal -gt 0) { [math]::Round(($allCovered / $allTotal) * 100, 2) } else { 100 }
+          $threshold = 50
+
+          $repoUrl = "https://github.com/${{ github.repository }}"
+          $headSha = "${{ github.event.pull_request.head.sha }}"
+          $excludeLink = "$repoUrl/blob/$headSha/.github/coverage-exclusions.json"
+
+          # Build PR comment
+          $icon = if ($thresholdPct -ge $threshold) { ':white_check_mark:' } else { ':x:' }
+          $body = "## $icon Code Coverage — Changed Files`n`n"
+          $body += "| File | Lines | Coverage |`n|---|---|---|`n"
+          foreach ($f in $fileStats | Sort-Object Pct -Descending) {
+            $bar = if ($f.Pct -ge 80) { ':green_circle:' } elseif ($f.Pct -ge 50) { ':yellow_circle:' } else { ':red_circle:' }
+            # Display last 2 path segments: SubDir\File.cs
+            $parts = $f.File -split '[/\\]'
+            $displayName = ($parts | Select-Object -Last 2) -join '\'
+            $urlPath = $f.File -replace '\\', '/'
+            $fileLink = "[$displayName]($repoUrl/blob/$headSha/$urlPath)"
+            $suffix = if ($f.Excluded) { " — *[skipped from threshold]($excludeLink)*" } else { '' }
+            $body += "| $fileLink | $($f.Covered)/$($f.Total) | $bar $($f.Pct)%$suffix |`n"
+          }
+          $body += "`n**Testable: $thresholdPct%** ($thresholdCovered/$thresholdTotal lines, threshold: $threshold%)"
+          if ($thresholdTotal -ne $allTotal) { $body += " | Overall: $allPct% ($allCovered/$allTotal)" }
+          $body += "`n<!-- coverage-bot -->"
+
+          # Upsert comment: find existing bot comment or create new
+          $prNumber = "${{ github.event.pull_request.number }}"
+          $existing = gh api "repos/${{ github.repository }}/issues/$prNumber/comments" --paginate --jq '.[] | select(.body | contains("<!-- coverage-bot -->")) | .id' 2>$null | Select-Object -First 1
+          if ($existing) {
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/$existing" -f body=$body | Out-Null
+            Write-Host "Updated existing coverage comment"
+          } else {
+            gh pr comment $prNumber --body $body
+            Write-Host "Created coverage comment"
+          }
+
+          Write-Host "Testable coverage: $thresholdPct% ($thresholdCovered/$thresholdTotal lines, threshold: $threshold%)"
+          if ($thresholdPct -lt $threshold) {
+            Write-Host "::error::Coverage on testable changed files ($thresholdPct%) is below the $threshold% threshold"
+            exit 1
+          }
 
   build:
     runs-on: windows-latest
@@ -124,19 +268,35 @@ jobs:
 
   wack:
     needs: [build]
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            runner: windows-latest
+          - platform: ARM64
+            runner: windows-11-arm
     steps:
-      - name: Download x64 MSIX
+      - name: Download ${{ matrix.platform }} MSIX
         uses: actions/download-artifact@v8
         with:
-          name: msix-x64
+          name: msix-${{ matrix.platform }}
           path: msix
 
       - name: Run Windows App Certification Kit
         shell: pwsh
         run: |
-          $appCert = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\App Certification Kit" -Filter appcert.exe -Recurse | 
-            Select-Object -First 1 -ExpandProperty FullName
+          # Only use WACK that matches the runner architecture to avoid TAEF DLL load failures.
+          # windows-11-arm currently ships only the x64 WACK; skip rather than run a broken tool.
+          $nativeArch = $env:PROCESSOR_ARCHITECTURE  # AMD64 or ARM64
+          $appCert = if ($nativeArch -eq 'ARM64') {
+            Get-ChildItem "C:\Program Files\Windows Kits\10\App Certification Kit" -Filter appcert.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          } else {
+            Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\App Certification Kit" -Filter appcert.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
           if (-not $appCert) { 
             Write-Host "##[warning]WACK not found, skipping"
             exit 0 
@@ -155,11 +315,75 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: wack-report
+          name: wack-report-${{ matrix.platform }}
           path: wack-report.xml
 
+      - name: Post WACK results to PR
+        if: always() && github.event_name == 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $reportPath = "wack-report.xml"
+          $prNumber = "${{ github.event.pull_request.number }}"
+          $platform = "${{ matrix.platform }}"
+          $marker = "<!-- wack-bot-$platform -->"
+
+          if (-not (Test-Path $reportPath)) {
+            $body = "## :warning: WACK Results ($platform)`n`nWACK report was not generated (tool may not be available on runner).`n$marker"
+          } else {
+            [xml]$report = Get-Content $reportPath
+            # Use OVERALL_RESULT attribute and XPath+InnerText to reliably read CDATA result nodes
+            $overall = $report.REPORT.OVERALL_RESULT
+            $tests = $report.SelectNodes("//TEST")
+            $passed  = @($tests | Where-Object { $_.SelectSingleNode("RESULT").InnerText.Trim() -eq 'PASS' })
+            $failed  = @($tests | Where-Object { $_.SelectSingleNode("RESULT").InnerText.Trim() -eq 'FAIL' })
+            $skipped = @($tests | Where-Object { $_.SelectSingleNode("RESULT").InnerText.Trim() -eq 'NOT_APPLICABLE' })
+
+            $icon = if ($overall -eq 'PASS') { ':white_check_mark:' } else { ':x:' }
+            $body = "## $icon WACK Results ($platform)`n`n"
+            $body += ":green_circle: **$($passed.Count) passed** "
+            if ($failed.Count -gt 0) { $body += ":red_circle: **$($failed.Count) failed** " }
+            if ($skipped.Count -gt 0) { $body += ":white_circle: **$($skipped.Count) N/A** " }
+            $body += "`n`n"
+
+            if ($failed.Count -gt 0) {
+              $body += "### Failed Tests`n| Test | Message |`n|---|---|`n"
+              foreach ($t in $failed) {
+                $name = $t.GetAttribute("NAME")
+                $msgs = @($t.SelectNodes("MESSAGES/MESSAGE")) | ForEach-Object { $_.GetAttribute("TEXT") }
+                $detail = ($msgs -join '; ') -replace '[\r\n]+', ' '
+                if ($detail.Length -gt 200) { $detail = $detail.Substring(0, 200) + '...' }
+                if (-not $detail) { $detail = $t.GetAttribute("DESCRIPTION") }
+                $body += "| ``$name`` | $detail |`n"
+              }
+              $body += "`n"
+            }
+
+            $body += "<details><summary>All tests</summary>`n`n"
+            $body += "| Test | Result |`n|---|---|`n"
+            foreach ($t in $tests | Sort-Object { $_.SelectSingleNode("RESULT").InnerText.Trim() }) {
+              $result = $t.SelectSingleNode("RESULT").InnerText.Trim()
+              $r = switch ($result) { 'PASS' { ':green_circle: Pass' } 'FAIL' { ':red_circle: Fail' } default { ':white_circle: N/A' } }
+              $body += "| ``$($t.GetAttribute('NAME'))`` | $r |`n"
+            }
+            $body += "`n</details>`n"
+            $body += $marker
+          }
+
+          # Use ConvertFrom-Json + PowerShell filtering to avoid jq escaping issues
+          $comments = gh api "repos/${{ github.repository }}/issues/$prNumber/comments" --paginate | ConvertFrom-Json
+          $existing = $comments | Where-Object { $_.body -like "*$marker*" } | Select-Object -First 1 -ExpandProperty id
+          if ($existing) {
+            gh api --method PATCH "repos/${{ github.repository }}/issues/comments/$existing" -f body=$body | Out-Null
+            Write-Host "Updated existing WACK comment ($platform)"
+          } else {
+            gh pr comment $prNumber --body $body --repo "${{ github.repository }}"
+            Write-Host "Created WACK comment ($platform)"
+          }
+
   release:
-    needs: [release-please, build]
+    needs: [release-please, build, lint-and-test]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -192,7 +416,7 @@ jobs:
             release/**/*.msix
 
   pre-release:
-    needs: [release-please, build]
+    needs: [release-please, build, lint-and-test]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && needs.release-please.outputs.release_created != 'true'
     runs-on: ubuntu-latest
     permissions:
