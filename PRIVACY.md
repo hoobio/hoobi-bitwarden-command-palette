@@ -22,4 +22,4 @@ This extension relies on the [Bitwarden CLI](https://bitwarden.com/help/cli/), w
 
 ## Contact
 
-If you have questions about this privacy policy, please open an issue at [github.com/hoobio/hoobi-bitwarden-command-palette](https://github.com/hoobio/hoobi-bitwarden-command-palette/issues).
+If you have questions about this privacy policy, please open an issue at [github.com/hoobio/command-palette-bitwarden](https://github.com/hoobio/command-palette-bitwarden/issues).

@@ -13,7 +13,7 @@
 
 ### From GitHub Releases
 
-1. Download the `.msix` package for your architecture (x64 or ARM64) from [Releases](https://github.com/hoobio/hoobi-bitwarden-command-palette/releases/latest)
+1. Download the `.msix` package for your architecture (x64 or ARM64) from [Releases](https://github.com/hoobio/command-palette-bitwarden/releases/latest)
 2. Install the signing certificate to the **Trusted People** store:
    ```powershell
    Import-Certificate -FilePath .\HoobiBitwardenCommandPaletteExtension.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
@@ -26,7 +26,7 @@
 ### From Source
 
 ```powershell
-git clone https://github.com/hoobio/hoobi-bitwarden-command-palette.git
+git clone https://github.com/hoobio/command-palette-bitwarden.git
 cd hoobi-bitwarden-command-palette/HoobiBitwardenCommandPaletteExtension
 dotnet build -c Debug -p:Platform=x64
 ```
