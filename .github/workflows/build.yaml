@@ -151,21 +151,24 @@ jobs:
 
           $repoUrl = "https://github.com/${{ github.repository }}"
           $headSha = "${{ github.event.pull_request.head.sha }}"
-          $excludeLink = "$repoUrl/blob/$headSha/.github/coverage-exclusions.json"
 
           # Build PR comment
           $icon = if ($thresholdPct -ge $threshold) { ':white_check_mark:' } else { ':x:' }
           $body = "## $icon Code Coverage — Changed Files`n`n"
-          $body += "| File | Lines | Coverage |`n|---|---|---|`n"
-          foreach ($f in $fileStats | Sort-Object Pct -Descending) {
-            $bar = if ($f.Pct -ge 80) { ':green_circle:' } elseif ($f.Pct -ge 50) { ':yellow_circle:' } else { ':red_circle:' }
+          $body += "| Coverage | Lines | File |`n|---|---|---|`n"
+          foreach ($f in $fileStats | Sort-Object { if ($_.Excluded) { -1 } else { $_.Pct } } -Descending) {
             # Display last 2 path segments: SubDir\File.cs
             $parts = $f.File -split '[/\\]'
             $displayName = ($parts | Select-Object -Last 2) -join '\'
             $urlPath = $f.File -replace '\\', '/'
             $fileLink = "[$displayName]($repoUrl/blob/$headSha/$urlPath)"
-            $suffix = if ($f.Excluded) { " — *[skipped from threshold]($excludeLink)*" } else { '' }
-            $body += "| $fileLink | $($f.Covered)/$($f.Total) | $bar $($f.Pct)%$suffix |`n"
+            $coverageCell = if ($f.Excluded) {
+              ':warning: Excluded'
+            } else {
+              $bar = if ($f.Pct -ge 80) { ':green_circle:' } elseif ($f.Pct -ge 50) { ':yellow_circle:' } else { ':red_circle:' }
+              "$bar $($f.Pct)%"
+            }
+            $body += "| $coverageCell | $($f.Covered)/$($f.Total) | $fileLink |`n"
           }
           $body += "`n**Testable: $thresholdPct%** ($thresholdCovered/$thresholdTotal lines, threshold: $threshold%)"
           if ($thresholdTotal -ne $allTotal) { $body += " | Overall: $allPct% ($allCovered/$allTotal)" }
