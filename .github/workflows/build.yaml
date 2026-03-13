@@ -283,10 +283,13 @@ jobs:
     needs: [build]
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - platform: x64
             runner: windows-latest
+          - platform: ARM64
+            runner: windows-11-arm
     steps:
       - name: Download ${{ matrix.platform }} MSIX
         uses: actions/download-artifact@v8
@@ -303,16 +306,23 @@ jobs:
       - name: Run Windows App Certification Kit
         shell: pwsh
         run: |
-          # Only use WACK that matches the runner architecture to avoid TAEF DLL load failures.
-          # windows-11-arm currently ships only the x64 WACK; skip rather than run a broken tool.
+          # WACK can test any package architecture regardless of its own bitness.
+          # On ARM64 runners the native ARM64 kit may not be present, so fall back to
+          # the x64 kit installed under Program Files (x86) via WoW64.
           $nativeArch = $env:PROCESSOR_ARCHITECTURE  # AMD64 or ARM64
-          $appCert = if ($nativeArch -eq 'ARM64') {
-            Get-ChildItem "C:\Program Files\Windows Kits\10\App Certification Kit" -Filter appcert.exe -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1 -ExpandProperty FullName
+          $searchPaths = if ($nativeArch -eq 'ARM64') {
+            @(
+              'C:\Program Files\Windows Kits\10\App Certification Kit',
+              'C:\Program Files (x86)\Windows Kits\10\App Certification Kit'
+            )
           } else {
-            Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\App Certification Kit" -Filter appcert.exe -Recurse -ErrorAction SilentlyContinue |
-              Select-Object -First 1 -ExpandProperty FullName
+            @('C:\Program Files (x86)\Windows Kits\10\App Certification Kit')
           }
+          $appCert = $searchPaths | ForEach-Object {
+            Get-ChildItem $_ -Filter appcert.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1 -ExpandProperty FullName
+          } | Where-Object { $_ } | Select-Object -First 1
+          Write-Host "Using appcert: $appCert"
           if (-not $appCert) { 
             Write-Host "##[warning]WACK not found, skipping"
             exit 0 
