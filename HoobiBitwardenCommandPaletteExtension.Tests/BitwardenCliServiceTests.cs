@@ -1170,4 +1170,154 @@ public class BitwardenCliServiceTests
     var result = svc.ApplyFilter(TestItems, ("has", "uri")).ToList();
     Assert.Equal(2, result.Count);
   }
+
+  // --- SetSession / ClearSession / IsUnlocked / IsCacheLoaded ---
+
+  [Fact]
+  public void IsUnlocked_Default_IsFalse()
+  {
+    var svc = new BitwardenCliService();
+    Assert.False(svc.IsUnlocked);
+  }
+
+  [Fact]
+  public void SetSession_SetsIsUnlocked()
+  {
+    var svc = new BitwardenCliService();
+    svc.SetSession("test-key");
+    Assert.True(svc.IsUnlocked);
+  }
+
+  [Fact]
+  public void ClearSession_ResetsIsUnlockedAndCache()
+  {
+    var svc = new BitwardenCliService();
+    svc.SetSession("key");
+    svc.LoadTestData([new() { Id = "x", Name = "X", Type = BitwardenItemType.Login, Uris = [], RevisionDate = DateTime.UtcNow }], []);
+    Assert.True(svc.IsUnlocked);
+    Assert.True(svc.IsCacheLoaded);
+    svc.ClearSession();
+    Assert.False(svc.IsUnlocked);
+    Assert.False(svc.IsCacheLoaded);
+  }
+
+  [Fact]
+  public void LastStatus_Initial_IsNull()
+  {
+    var svc = new BitwardenCliService();
+    Assert.Null(svc.LastStatus);
+  }
+
+  // --- WarmCacheAsync / WarmupTask ---
+
+  [Fact]
+  public void WarmupTask_Initial_IsCompleted()
+  {
+    var svc = new BitwardenCliService();
+    Assert.True(svc.WarmupTask.IsCompleted);
+  }
+
+  [Fact]
+  public void WarmCacheAsync_ReturnsSameTaskAsWarmupTask()
+  {
+    var svc = new BitwardenCliService();
+    var returned = svc.WarmCacheAsync();
+    Assert.Same(returned, svc.WarmupTask);
+  }
+
+  [Fact]
+  public void WarmCacheAsync_CalledTwice_WarmupTaskReflectsLatestCall()
+  {
+    var svc = new BitwardenCliService();
+    var first = svc.WarmCacheAsync();
+    var second = svc.WarmCacheAsync();
+    Assert.Same(second, svc.WarmupTask);
+    Assert.NotSame(first, second);
+  }
+
+  // --- SearchCached ---
+
+  [Fact]
+  public void SearchCached_EmptyCache_ReturnsEmpty()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([], []);
+    Assert.Empty(svc.SearchCached());
+  }
+
+  [Fact]
+  public void SearchCached_NullQuery_ReturnsAll()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData(
+      [new() { Id = "a", Name = "Alpha", Type = BitwardenItemType.Login, Uris = [], RevisionDate = DateTime.UtcNow }],
+      []);
+    Assert.Single(svc.SearchCached(null));
+  }
+
+  [Fact]
+  public void SearchCached_EmptyQuery_FavoritesFirst()
+  {
+    var svc = new BitwardenCliService();
+    var now = DateTime.UtcNow;
+    svc.LoadTestData([
+      new() { Id = "normal", Name = "Normal", Type = BitwardenItemType.Login, Uris = [], Favorite = false, RevisionDate = now },
+      new() { Id = "fav", Name = "Favorite", Type = BitwardenItemType.Login, Uris = [], Favorite = true, RevisionDate = now },
+    ], []);
+    var result = svc.SearchCached();
+    Assert.Equal("fav", result[0].Id);
+    Assert.Equal("normal", result[1].Id);
+  }
+
+  [Fact]
+  public void SearchCached_TextQuery_ReturnsMatchingItems()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([
+      new() { Id = "gh", Name = "GitHub", Type = BitwardenItemType.Login, Uris = [], RevisionDate = DateTime.UtcNow },
+      new() { Id = "bb", Name = "BitBucket", Type = BitwardenItemType.Login, Uris = [], RevisionDate = DateTime.UtcNow },
+    ], []);
+    var result = svc.SearchCached("github");
+    Assert.Single(result);
+    Assert.Equal("gh", result[0].Id);
+  }
+
+  [Fact]
+  public void SearchCached_TextQuery_NoMatch_ReturnsEmpty()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([
+      new() { Id = "gh", Name = "GitHub", Type = BitwardenItemType.Login, Uris = [], RevisionDate = DateTime.UtcNow },
+    ], []);
+    Assert.Empty(svc.SearchCached("xyz123doesnotexist"));
+  }
+
+  [Fact]
+  public void SearchCached_FilterAndText_AppliesBoth()
+  {
+    var svc = new BitwardenCliService();
+    svc.LoadTestData([
+      new() { Id = "login-1", Name = "GitHub", Type = BitwardenItemType.Login, Uris = [new ItemUri("https://github.com", UriMatchType.Default)], RevisionDate = DateTime.UtcNow },
+      new() { Id = "login-2", Name = "GitLab", Type = BitwardenItemType.Login, Uris = [new ItemUri("https://gitlab.com", UriMatchType.Default)], RevisionDate = DateTime.UtcNow },
+      new() { Id = "card-1", Name = "GitHub Card", Type = BitwardenItemType.Card, RevisionDate = DateTime.UtcNow },
+    ], []);
+    // url:github narrows to login-1 and login-2; text "GitHub" then filters to login-1
+    var result = svc.SearchCached("url:github GitHub");
+    Assert.Single(result);
+    Assert.Equal("login-1", result[0].Id);
+  }
+
+  [Fact]
+  public void SearchCached_TextQuery_SortedByRelevance()
+  {
+    var svc = new BitwardenCliService();
+    var now = DateTime.UtcNow;
+    svc.LoadTestData([
+      new() { Id = "partial", Name = "MyGitHubAccount", Type = BitwardenItemType.Login, Uris = [], RevisionDate = now },
+      new() { Id = "exact", Name = "GitHub", Type = BitwardenItemType.Login, Uris = [], RevisionDate = now },
+    ], []);
+    var result = svc.SearchCached("GitHub");
+    Assert.Equal("exact", result[0].Id);
+    Assert.Equal("partial", result[1].Id);
+  }
 }

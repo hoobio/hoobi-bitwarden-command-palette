@@ -3,6 +3,7 @@
 ## Git Commit Message Format
 
 All commit messages MUST follow the [Conventional Commits](https://www.conventionalcommits.org/) specification for release-please compatibility.
+Commits and pull requests in this repo DO NOT require an Azure DevOps work item number as this repo is not associated with an Azure DevOps project.
 
 ### Required Format
 
@@ -120,6 +121,16 @@ When you need to look up SDK types, interfaces, properties, or capabilities, use
 - `CommandResult` - Return value from commands (`Dismiss`, `GoBack`, `KeepOpen`, `ShowToast`, etc.)
 - `StatusMessage` - Status bar message with `MessageState` (`Info`, `Success`, `Warning`, `Error`)
 - `IconInfo` - Icon from Segoe MDL2 Assets unicode or image URL
+
+---
+
+## Code Coverage
+
+Every C# source file touched in a PR must meet **50% line coverage** (measured against unit tests in `HoobiBitwardenCommandPaletteExtension.Tests`). The CI pipeline enforces this and will fail the PR if the threshold is not met.
+
+- When adding or modifying logic in a `.cs` file, add or update tests in the corresponding test file under `HoobiBitwardenCommandPaletteExtension.Tests/`
+- Files listed in `.github/coverage-exclusions.json` are exempt from the threshold (e.g. UI-only pages that can't be unit tested)
+- Test files themselves (`*.Tests/**`) are excluded from coverage measurement
 
 ---
 
