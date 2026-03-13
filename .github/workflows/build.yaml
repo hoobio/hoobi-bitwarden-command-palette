@@ -232,6 +232,17 @@ jobs:
             -p:AppxBundle=Never
         working-directory: HoobiBitwardenCommandPaletteExtension
 
+      - name: Find produced MSIX (diagnostic)
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem -Path "${{ github.workspace }}" -Recurse -Filter *.msix -ErrorAction SilentlyContinue
+          if ($found) {
+            Write-Host "Found MSIX file(s):"
+            $found | ForEach-Object { Write-Host "  $($_.FullName)" }
+          } else {
+            Write-Host "::warning::No .msix files found anywhere in workspace after publish"
+          }
+
       - name: Import signing certificate
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
@@ -260,7 +271,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: msix-${{ matrix.platform }}
-          path: AppPackages/**/*.msix
+          path: "**/*.msix"
 
       - name: Upload publish output
         uses: actions/upload-artifact@v7
@@ -315,7 +326,9 @@ jobs:
           $reportPath = Join-Path $PWD "wack-report.xml"
           Write-Host "Running WACK on: $msix"
           Write-Host "Report will be saved to: $reportPath"
-          # Exit code is handled by the post-step after applying exclusions; don't fail here
+          # Exit code is handled by the post-step after applying exclusions; don't fail here.
+          # Disable native-command error propagation so appcert's non-zero exit doesn't terminate the step.
+          $PSNativeCommandErrorActionPreference = $false
           & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath $reportPath
           Write-Host "appcert exited with code $LASTEXITCODE"
           exit 0
