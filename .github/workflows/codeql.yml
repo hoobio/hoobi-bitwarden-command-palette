@@ -17,6 +17,7 @@ on:
       - "*.props"
       - "*.targets"
       - ".github/workflows/codeql.yml"
+      - ".release-please-manifest.json"
   schedule:
     - cron: "22 1 * * 5"
 

@@ -16,17 +16,6 @@ on:
       - ".release-please-manifest.json"
   pull_request:
     branches: [main]
-    paths:
-      - "**.cs"
-      - "**.csproj"
-      - "*.props"
-      - "*.targets"
-      - ".editorconfig"
-      - "**/Package.appxmanifest"
-      - "version.txt"
-      - ".github/workflows/build.yaml"
-      - "release-please-config.json"
-      - ".release-please-manifest.json"
   workflow_dispatch:
 
 permissions:
@@ -34,6 +23,38 @@ permissions:
   pull-requests: write
 
 jobs:
+  detect-changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code_changed: ${{ steps.filter.outputs.code_changed }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code_changed:
+              - "**.cs"
+              - "**.csproj"
+              - "*.props"
+              - "*.targets"
+              - ".editorconfig"
+              - "**/Package.appxmanifest"
+              - "version.txt"
+              - ".github/workflows/build.yaml"
+              - "release-please-config.json"
+              - ".release-please-manifest.json"
+
+      - name: Summarize skip
+        if: steps.filter.outputs.code_changed == 'false'
+        run: |
+          echo "::notice::No code changes detected — build, lint-and-test, and WACK will be skipped"
+          echo "### 💭 No code changes detected" >> "$GITHUB_STEP_SUMMARY"
+          echo "Build, lint-and-test, and WACK checks were skipped because this PR only contains non-code changes." >> "$GITHUB_STEP_SUMMARY"
+
   release-please:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
@@ -47,6 +68,8 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
   lint-and-test:
+    needs: [detect-changes]
+    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -191,6 +214,8 @@ jobs:
           }
 
   build:
+    needs: [detect-changes]
+    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
     runs-on: windows-latest
     strategy:
       matrix:
