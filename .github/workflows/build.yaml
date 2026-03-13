@@ -134,8 +134,8 @@ jobs:
           $fileStats = $fileMap.GetEnumerator() | ForEach-Object {
             $pct = if ($_.Value.Total -gt 0) { [math]::Round(($_.Value.Covered / $_.Value.Total) * 100, 1) } else { 0 }
             $fileKey = $_.Key
-            $excluded = ($excludeFromThreshold | Where-Object { $fileKey -match $_ }).Count -gt 0
-            [pscustomobject]@{ File=$_.Key; Covered=$_.Value.Covered; Total=$_.Value.Total; Pct=$pct; Excluded=$excluded }
+            $matchedExclusion = $exclusions | Where-Object { $fileKey -match $_.pattern } | Select-Object -First 1
+            [pscustomobject]@{ File=$_.Key; Covered=$_.Value.Covered; Total=$_.Value.Total; Pct=$pct; Excluded=($null -ne $matchedExclusion); Reason=$matchedExclusion.reason }
           }
 
           # Calculate threshold only on non-excluded files
@@ -162,13 +162,12 @@ jobs:
             $displayName = ($parts | Select-Object -Last 2) -join '\'
             $urlPath = $f.File -replace '\\', '/'
             $fileLink = "[$displayName]($repoUrl/blob/$headSha/$urlPath)"
-            $coverageCell = if ($f.Excluded) {
-              ':warning: Excluded'
+            if ($f.Excluded) {
+              $body += "| :warning: Excluded | $($f.Covered)/$($f.Total) | $fileLink — *$($f.Reason)* |`n"
             } else {
               $bar = if ($f.Pct -ge 80) { ':green_circle:' } elseif ($f.Pct -ge 50) { ':yellow_circle:' } else { ':red_circle:' }
-              "$bar $($f.Pct)%"
+              $body += "| $bar $($f.Pct)% | $($f.Covered)/$($f.Total) | $fileLink |`n"
             }
-            $body += "| $coverageCell | $($f.Covered)/$($f.Total) | $fileLink |`n"
           }
           $body += "`n**Testable: $thresholdPct%** ($thresholdCovered/$thresholdTotal lines, threshold: $threshold%)"
           if ($thresholdTotal -ne $allTotal) { $body += " | Overall: $allPct% ($allCovered/$allTotal)" }
