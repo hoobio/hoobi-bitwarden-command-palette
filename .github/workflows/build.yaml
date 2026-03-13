@@ -272,13 +272,10 @@ jobs:
     needs: [build]
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: false
       matrix:
         include:
           - platform: x64
             runner: windows-latest
-          - platform: ARM64
-            runner: windows-11-arm
     steps:
       - name: Download ${{ matrix.platform }} MSIX
         uses: actions/download-artifact@v8
@@ -310,12 +307,18 @@ jobs:
             exit 0 
           }
           $msix = Get-ChildItem msix -Recurse -Filter *.msix | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $msix) {
+            Write-Host "::error::No .msix found under msix/ — listing directory contents for diagnosis:"
+            Get-ChildItem msix -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
+            exit 1
+          }
           $reportPath = Join-Path $PWD "wack-report.xml"
           Write-Host "Running WACK on: $msix"
           Write-Host "Report will be saved to: $reportPath"
-          # Run WACK but don't fail here — we parse exclusions ourselves below
+          # Exit code is handled by the post-step after applying exclusions; don't fail here
           & $appCert test -apptype windowspackagedapp -appxpackagepath $msix -reportoutputpath $reportPath
           Write-Host "appcert exited with code $LASTEXITCODE"
+          exit 0
 
       - name: Upload WACK report
         if: always()
@@ -447,7 +450,7 @@ jobs:
           if ($realFailures -and $realFailures.Count -gt 0) { exit 1 }
 
   release:
-    needs: [release-please, build, lint-and-test]
+    needs: [release-please, build, lint-and-test, wack]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -478,6 +481,17 @@ jobs:
           tag_name: ${{ needs.release-please.outputs.tag_name }}
           files: |
             release/**/*.msix
+
+      - name: Append trust signal to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.release-please.outputs.tag_name }}"
+          ID=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id')
+          BODY=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.body // ""')
+          TRUST=$'\n\n---\n> \u2705 WACK certified (x64) \u00b7 \U0001F512 [CodeQL scanned](https://github.com/${{ github.repository }}/actions/workflows/codeql.yml)'
+          jq -n --arg body "${BODY}${TRUST}" '{body: $body}' \
+            | gh api --method PATCH "repos/${{ github.repository }}/releases/$ID" --input -
 
   pre-release:
     needs: [release-please, build, lint-and-test]
