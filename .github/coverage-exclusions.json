@@ -1,18 +1,22 @@
 [
   {
     "pattern": "Pages[\\\\/]",
-    "reason": "WinUI page classes — pure UI construction, no testable logic"
+    "reason": "WinUI page classes, pure UI construction, no testable logic"
   },
   {
     "pattern": "Program\\.cs$",
-    "reason": "Entry point — WinRT activation boilerplate"
+    "reason": "Entry point, WinRT activation boilerplate"
+  },
+  {
+    "pattern": "CommandsProvider\\.cs$",
+    "reason": "Bootstraps WinRT SDK types (CommandItem, CommandProvider) in constructor, cannot be instantiated in unit tests"
   },
   {
     "pattern": "FaviconService\\.cs$",
-    "reason": "HTTP client wrapper — requires live network I/O"
+    "reason": "HTTP client wrapper, requires live network I/O"
   },
   {
     "pattern": "VaultItemHelper\\.cs$",
-    "reason": "WinRT UI helpers — returns SDK types that cannot be instantiated in unit tests"
+    "reason": "WinRT UI helpers, returns SDK types that cannot be instantiated in unit tests"
   }
 ]

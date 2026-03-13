@@ -3,6 +3,7 @@
 ## Git Commit Message Format
 
 All commit messages MUST follow the [Conventional Commits](https://www.conventionalcommits.org/) specification for release-please compatibility.
+Commits and pull requests in this repo DO NOT require an Azure DevOps work item number as this repo is not associated with an Azure DevOps project.
 
 ### Required Format
 
@@ -66,6 +67,26 @@ Can specify affected area: `feat(auth): add OAuth support`
 
 Include work item in description: `fix: resolve login timeout (AB#123)`
 
+### Multiple Changes — PR Description Format
+
+This repo uses **squash merges**, so the PR description becomes the commit message. To represent multiple changes in one PR (each gets its own changelog entry), add additional conventional commit messages as footers at the **bottom** of the PR description body:
+
+```
+feat: add primary feature description
+
+Optional body text explaining the PR.
+
+fix(utils): secondary fix description
+BREAKING-CHANGE: describe breaking change if applicable
+feat(utils): another feature in the same PR
+```
+
+- Each footer entry must follow the same `type(scope): description` format
+- `BREAKING-CHANGE:` footer triggers a MAJOR version bump
+- Additional entries must appear **after** any free-form body text
+- Only `feat`, `fix`, `perf`, and `revert` types produce changelog entries; `ci`, `test`, `docs`, `chore` do not
+- These additional entries each produce their own changelog line
+
 ## Notes
 
 - First line limited to 72 characters
@@ -120,6 +141,16 @@ When you need to look up SDK types, interfaces, properties, or capabilities, use
 - `CommandResult` - Return value from commands (`Dismiss`, `GoBack`, `KeepOpen`, `ShowToast`, etc.)
 - `StatusMessage` - Status bar message with `MessageState` (`Info`, `Success`, `Warning`, `Error`)
 - `IconInfo` - Icon from Segoe MDL2 Assets unicode or image URL
+
+---
+
+## Code Coverage
+
+Every C# source file touched in a PR must meet **50% line coverage** (measured against unit tests in `HoobiBitwardenCommandPaletteExtension.Tests`). The CI pipeline enforces this and will fail the PR if the threshold is not met.
+
+- When adding or modifying logic in a `.cs` file, add or update tests in the corresponding test file under `HoobiBitwardenCommandPaletteExtension.Tests/`
+- Files listed in `.github/coverage-exclusions.json` are exempt from the threshold (e.g. UI-only pages that can't be unit tested)
+- Test files themselves (`*.Tests/**`) are excluded from coverage measurement
 
 ---
 

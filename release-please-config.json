@@ -2,6 +2,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
+      "pull-request-header": "This PR was generated automatically by [release-please](https://github.com/googleapis/release-please).",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "changelog-path": "CHANGELOG.md",
