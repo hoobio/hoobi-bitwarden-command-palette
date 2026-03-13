@@ -291,17 +291,17 @@ jobs:
           - platform: ARM64
             runner: windows-11-arm
     steps:
-      - name: Download ${{ matrix.platform }} MSIX
-        uses: actions/download-artifact@v8
-        with:
-          name: msix-${{ matrix.platform }}
-          path: msix
-
       - name: Checkout (for wack-exclusions.json)
         uses: actions/checkout@v6
         with:
           sparse-checkout: .github/wack-exclusions.json
           sparse-checkout-cone-mode: false
+
+      - name: Download ${{ matrix.platform }} MSIX
+        uses: actions/download-artifact@v8
+        with:
+          name: msix-${{ matrix.platform }}
+          path: msix
 
       - name: Run Windows App Certification Kit
         shell: pwsh
