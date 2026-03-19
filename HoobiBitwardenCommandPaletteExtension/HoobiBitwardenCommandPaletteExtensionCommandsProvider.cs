@@ -28,9 +28,9 @@ public partial class HoobiBitwardenCommandPaletteExtensionCommandsProvider : Com
             new CommandItem(new HoobiBitwardenCommandPaletteExtensionPage(_service, _settingsManager))
             {
 #if DEBUG
-                Title = $"Bitwarden (Dev)",
+                Title = "Bitwarden (Dev)",
 #else
-                Title = $"Bitwarden",
+                Title = "Bitwarden",
 #endif
                 Subtitle = "Search your vault",
             },

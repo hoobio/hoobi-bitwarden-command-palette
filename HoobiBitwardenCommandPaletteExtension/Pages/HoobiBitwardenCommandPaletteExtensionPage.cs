@@ -836,8 +836,6 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     {
         _handlingAction = true;
         ClearSearchText();
-        var email = _pendingEmail;
-        var password = _pendingPassword;
         _errorMessage = null;
         _currentItems = [];
         IsLoading = true;
