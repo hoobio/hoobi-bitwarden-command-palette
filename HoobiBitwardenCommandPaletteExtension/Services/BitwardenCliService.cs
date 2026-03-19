@@ -18,6 +18,10 @@ internal sealed class BitwardenCliService
   private readonly BitwardenSettingsManager? _settings;
   private string? _sessionKey;
   private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Process> _runningProcesses = new();
+  private Process? _pendingDeviceVerificationProcess;
+  private CancellationTokenSource? _pendingDeviceVerificationCts;
+  private Task<(string Content, bool Detected)>? _pendingStdoutTask;
+  private Task<(string Content, bool Detected)>? _pendingStderrTask;
 
   private List<BitwardenItem> _cache = [];
   private readonly Lock _cacheLock = new();
@@ -307,8 +311,9 @@ internal sealed class BitwardenCliService
     catch { }
   }
 
-  public async Task<(bool Success, string? Error, bool TwoFactorRequired)> LoginAsync(string email, string password, string? twoFactorCode = null, int? twoFactorMethod = null)
+  public async Task<(bool Success, string? Error, bool TwoFactorRequired, bool DeviceVerificationRequired)> LoginAsync(string email, string password, string? twoFactorCode = null, int? twoFactorMethod = null)
   {
+    DisposeDeviceVerificationProcess();
     try
     {
       var sanitizedEmail = email.Replace("\"", "");
@@ -316,7 +321,9 @@ internal sealed class BitwardenCliService
       if (!string.IsNullOrEmpty(twoFactorCode))
       {
         var sanitizedCode = twoFactorCode.Replace("\"", "");
-        args += $" --method {twoFactorMethod ?? 0} --code \"{sanitizedCode}\"";
+        args += twoFactorMethod.HasValue
+            ? $" --method {twoFactorMethod.Value} --code \"{sanitizedCode}\""
+            : $" --code \"{sanitizedCode}\"";
       }
       args += " --raw";
 
@@ -331,45 +338,166 @@ internal sealed class BitwardenCliService
 
       psi.Environment["BW_MP"] = password;
 
-      using var process = Process.Start(psi)!;
-      using var cts = new CancellationTokenSource(CliTimeoutMs);
-      process.StandardInput.Close();
+      var process = Process.Start(psi)!;
+      var cts = new CancellationTokenSource(CliTimeoutMs);
 
-      var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
-      var (stderr, twoFactorDetected) = await ReadStderrWithTwoFactorDetectionAsync(process, cts.Token);
+      var allPrompts = new[] { "device verification", "Two-step" };
+      var stdoutTask = ReadStreamWithPromptDetectionAsync(process.StandardOutput, allPrompts, cts.Token);
+      var stderrTask = ReadStreamWithPromptDetectionAsync(process.StandardError, allPrompts, cts.Token);
 
-      if (twoFactorDetected)
+      var completed = await Task.WhenAny(stdoutTask, stderrTask);
+      var result = await completed;
+
+      if (result.Detected)
       {
+        if (result.Content.Contains("device verification", StringComparison.OrdinalIgnoreCase))
+        {
+          _pendingDeviceVerificationProcess = process;
+          _pendingDeviceVerificationCts = cts;
+          _pendingStdoutTask = stdoutTask;
+          _pendingStderrTask = stderrTask;
+          return (false, "New device verification required — enter OTP sent to your email", false, true);
+        }
         try { process.Kill(); } catch { }
-        return (false, "Two-factor authentication required - enter your 2FA code", true);
+        process.Dispose();
+        cts.Dispose();
+        return (false, "Two-factor authentication required — enter your 2FA code", true, false);
       }
 
+      // Neither prompt detected during streaming — check the other stream too
+      var otherTask = completed == stdoutTask ? stderrTask : stdoutTask;
+      var other = await otherTask;
+      if (other.Detected)
+      {
+        if (other.Content.Contains("device verification", StringComparison.OrdinalIgnoreCase))
+        {
+          _pendingDeviceVerificationProcess = process;
+          _pendingDeviceVerificationCts = cts;
+          _pendingStdoutTask = stdoutTask;
+          _pendingStderrTask = stderrTask;
+          return (false, "New device verification required — enter OTP sent to your email", false, true);
+        }
+        try { process.Kill(); } catch { }
+        process.Dispose();
+        cts.Dispose();
+        return (false, "Two-factor authentication required — enter your 2FA code", true, false);
+      }
+
+      try { process.StandardInput.Close(); } catch { }
       await process.WaitForExitAsync(cts.Token);
 
-      var key = (await stdoutTask).Trim();
-      if (process.ExitCode == 0 && !string.IsNullOrEmpty(key))
+      var stdout = (await stdoutTask).Content.Trim();
+      var stderr = (await stderrTask).Content.Trim();
+      var exitCode = process.ExitCode;
+
+      process.Dispose();
+      cts.Dispose();
+
+      if (exitCode == 0 && !string.IsNullOrEmpty(stdout) && !stdout.Contains(' '))
       {
-        _sessionKey = key;
+        _sessionKey = stdout;
         SetStatus(VaultStatus.Unlocked);
         if (_settings?.RememberSession.Value == true)
-          SessionStore.Save(key);
-        return (true, null, false);
+          SessionStore.Save(stdout);
+        return (true, null, false, false);
       }
 
-      var error = stderr.Trim();
-      var needs2fa = error.Contains("Two-step", StringComparison.OrdinalIgnoreCase)
-          || error.Contains("two-factor", StringComparison.OrdinalIgnoreCase);
+      var needs2fa = stderr.Contains("Two-step", StringComparison.OrdinalIgnoreCase)
+          || stderr.Contains("two-factor", StringComparison.OrdinalIgnoreCase);
 
-      return (false, string.IsNullOrEmpty(error) ? "Login failed" : error, needs2fa);
+      var error = stderr;
+      return (false, string.IsNullOrEmpty(error) ? "Login failed" : error, needs2fa, false);
     }
     catch (Exception ex)
     {
-      return (false, ex.Message, false);
+      DisposeDeviceVerificationProcess();
+      return (false, ex.Message, false, false);
     }
+  }
+
+  public async Task<(bool Success, string? Error)> SubmitDeviceVerificationAsync(string otpCode)
+  {
+    var process = _pendingDeviceVerificationProcess;
+    var oldCts = _pendingDeviceVerificationCts;
+    var existingStdoutTask = _pendingStdoutTask;
+    var existingStderrTask = _pendingStderrTask;
+    _pendingDeviceVerificationProcess = null;
+    _pendingDeviceVerificationCts = null;
+    _pendingStdoutTask = null;
+    _pendingStderrTask = null;
+
+    if (process == null)
+      return (false, "No pending device verification — please log in again");
+
+    oldCts?.Dispose();
+    using var cts = new CancellationTokenSource(CliTimeoutMs);
+
+    try
+    {
+      await process.StandardInput.WriteLineAsync(otpCode.AsMemory(), cts.Token);
+      process.StandardInput.Close();
+
+      // For each stream: if its reader already returned (detected the prompt),
+      // create a new ReadToEndAsync to capture post-OTP output (e.g. session key).
+      // If its reader is still running (blocked waiting for data), await it —
+      // it will complete once the process exits after processing the OTP.
+      var stdoutRead = existingStdoutTask != null && existingStdoutTask.IsCompleted
+          ? process.StandardOutput.ReadToEndAsync(cts.Token)
+          : (existingStdoutTask ?? Task.FromResult((Content: "", Detected: false)))
+              .ContinueWith(t => t.Result.Content, cts.Token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+      var stderrRead = existingStderrTask != null && existingStderrTask.IsCompleted
+          ? process.StandardError.ReadToEndAsync(cts.Token)
+          : (existingStderrTask ?? Task.FromResult((Content: "", Detected: false)))
+              .ContinueWith(t => t.Result.Content, cts.Token, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+      await Task.WhenAll(stdoutRead, stderrRead);
+      await process.WaitForExitAsync(cts.Token);
+
+      var stdout = (await stdoutRead).Trim();
+      var stderr = (await stderrRead).Trim();
+
+      if (process.ExitCode == 0 && !string.IsNullOrEmpty(stdout) && !stdout.Contains(' '))
+      {
+        _sessionKey = stdout;
+        SetStatus(VaultStatus.Unlocked);
+        if (_settings?.RememberSession.Value == true)
+          SessionStore.Save(stdout);
+        return (true, null);
+      }
+
+      return (false, string.IsNullOrEmpty(stderr) ? "Verification failed" : stderr);
+    }
+    catch (Exception ex)
+    {
+      return (false, ex.Message);
+    }
+    finally
+    {
+      try { process.Kill(); } catch { }
+      process.Dispose();
+    }
+  }
+
+  private void DisposeDeviceVerificationProcess()
+  {
+    var process = _pendingDeviceVerificationProcess;
+    var cts = _pendingDeviceVerificationCts;
+    _pendingDeviceVerificationProcess = null;
+    _pendingDeviceVerificationCts = null;
+    _pendingStdoutTask = null;
+    _pendingStderrTask = null;
+    if (process != null)
+    {
+      try { process.Kill(); } catch { }
+      process.Dispose();
+    }
+    cts?.Dispose();
   }
 
   public async Task LogoutAsync()
   {
+    DisposeDeviceVerificationProcess();
     KillAllRunning();
     _sessionKey = null;
     SetStatus(VaultStatus.Unauthenticated);
@@ -736,18 +864,36 @@ internal sealed class BitwardenCliService
     }
   }
 
-  private static async Task<(string Content, bool TwoFactorDetected)> ReadStderrWithTwoFactorDetectionAsync(Process process, CancellationToken token)
+  private static async Task<(string Content, bool Detected)> ReadStreamWithPromptDetectionAsync(System.IO.StreamReader reader, string[] prompts, CancellationToken token)
   {
     var sb = new System.Text.StringBuilder();
     var buffer = new char[256];
     while (true)
     {
-      var count = await process.StandardError.ReadAsync(buffer.AsMemory(), token);
+      var count = await reader.ReadAsync(buffer.AsMemory(), token);
       if (count == 0) break;
       sb.Append(buffer, 0, count);
       var text = sb.ToString();
-      if (text.Contains("Two-step", StringComparison.OrdinalIgnoreCase))
-        return (text, true);
+      foreach (var prompt in prompts)
+      {
+        if (text.Contains(prompt, StringComparison.OrdinalIgnoreCase))
+          return (text, true);
+      }
+    }
+    return (sb.ToString(), false);
+  }
+
+  private static async Task<(string Content, bool Detected)> ReadUntilPromptAsync(System.IO.StreamReader reader, string prompt, CancellationToken token)
+  {
+    var sb = new System.Text.StringBuilder();
+    var buffer = new char[256];
+    while (true)
+    {
+      var count = await reader.ReadAsync(buffer.AsMemory(), token);
+      if (count == 0) break;
+      sb.Append(buffer, 0, count);
+      if (sb.ToString().Contains(prompt, StringComparison.OrdinalIgnoreCase))
+        return (sb.ToString(), true);
     }
     return (sb.ToString(), false);
   }
