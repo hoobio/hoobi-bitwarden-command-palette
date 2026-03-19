@@ -16,12 +16,21 @@ internal enum VaultStatus { Unlocked, Locked, Unauthenticated, CliNotFound }
 internal sealed class BitwardenCliService
 {
   private readonly BitwardenSettingsManager? _settings;
+  private readonly CliProcessFactory _processFactory;
   private string? _sessionKey;
-  private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Process> _runningProcesses = new();
-  private Process? _pendingDeviceVerificationProcess;
+  private readonly System.Collections.Concurrent.ConcurrentDictionary<int, ICliProcess> _runningProcesses = new();
+  private ICliProcess? _pendingDeviceVerificationProcess;
   private CancellationTokenSource? _pendingDeviceVerificationCts;
   private Task<(string Content, bool Detected)>? _pendingStdoutTask;
   private Task<(string Content, bool Detected)>? _pendingStderrTask;
+
+#pragma warning disable CA1859 // delegate CliProcessFactory requires ICliProcess return type
+  private static ICliProcess DefaultProcessFactory(ProcessStartInfo psi)
+  {
+    var process = Process.Start(psi)!;
+    return new RealCliProcess(process);
+  }
+#pragma warning restore CA1859
 
   private List<BitwardenItem> _cache = [];
   private readonly Lock _cacheLock = new();
@@ -54,6 +63,12 @@ internal sealed class BitwardenCliService
   internal static string? ServerUrl { get; private set; }
   internal static string? IconsUrl { get; private set; }
 
+  internal static void ResetStaticState()
+  {
+    ServerUrl = null;
+    IconsUrl = null;
+  }
+
   internal IReadOnlyDictionary<string, string> Folders
   {
     get { lock (_cacheLock) return _folders; }
@@ -65,9 +80,10 @@ internal sealed class BitwardenCliService
   public event Action? AutoLocking;
   public event Action? AutoLocked;
 
-  public BitwardenCliService(BitwardenSettingsManager? settings = null)
+  public BitwardenCliService(BitwardenSettingsManager? settings = null, CliProcessFactory? processFactory = null)
   {
     _settings = settings;
+    _processFactory = processFactory ?? DefaultProcessFactory;
     ApplyAutoLockSetting();
     AccessTracker.ItemAccessed += ResetAutoLockTimer;
     if (_settings != null)
@@ -171,17 +187,17 @@ internal sealed class BitwardenCliService
     return status;
   }
 
-  private static bool IsCliAvailable()
+  private bool IsCliAvailable()
   {
     try
     {
-      using var process = Process.Start(new ProcessStartInfo("bw", "--version")
+      using var process = _processFactory(new ProcessStartInfo(BwCliPath, "--version")
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         CreateNoWindow = true,
-      })!;
+      });
       var line = process.StandardOutput.ReadLine();
       var available = line != null;
       try { process.Kill(true); } catch { }
@@ -238,7 +254,7 @@ internal sealed class BitwardenCliService
   {
     try
     {
-      var psi = new ProcessStartInfo("bw", "unlock --passwordenv BW_MP --raw")
+      var psi = new ProcessStartInfo(BwCliPath, "unlock --passwordenv BW_MP --raw")
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
@@ -251,7 +267,7 @@ internal sealed class BitwardenCliService
       if (_sessionKey != null)
         psi.Environment["BW_SESSION"] = _sessionKey;
 
-      using var process = Process.Start(psi)!;
+      using var process = _processFactory(psi);
       process.StandardInput.Close();
       using var cts = new CancellationTokenSource(CliTimeoutMs);
       var stdoutTask = process.StandardOutput.ReadToEndAsync(cts.Token);
@@ -327,7 +343,7 @@ internal sealed class BitwardenCliService
       }
       args += " --raw";
 
-      var psi = new ProcessStartInfo("bw", args)
+      var psi = new ProcessStartInfo(BwCliPath, args)
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
@@ -338,7 +354,7 @@ internal sealed class BitwardenCliService
 
       psi.Environment["BW_MP"] = password;
 
-      var process = Process.Start(psi)!;
+      var process = _processFactory(psi);
       var cts = new CancellationTokenSource(CliTimeoutMs);
 
       var allPrompts = new[] { "device verification", "Two-step" };
@@ -529,6 +545,7 @@ internal sealed class BitwardenCliService
 
   public async Task<string?> SetServerUrlAsync(ServerConfig config)
   {
+    DisposeDeviceVerificationProcess();
     KillAllRunning();
     static string Sanitize(string url) => url.Replace("\"", "");
     var args = "config server \"" + Sanitize(config.BaseUrl) + "\"";
@@ -833,9 +850,11 @@ internal sealed class BitwardenCliService
     };
   }
 
-  private Process StartProcess(string args)
+  internal const string BwCliPath = "bw";
+
+  private ICliProcess StartProcess(string args)
   {
-    var psi = new ProcessStartInfo("bw", args)
+    var psi = new ProcessStartInfo(BwCliPath, args)
     {
       UseShellExecute = false,
       RedirectStandardOutput = true,
@@ -847,7 +866,7 @@ internal sealed class BitwardenCliService
     if (_sessionKey != null)
       psi.Environment["BW_SESSION"] = _sessionKey;
 
-    var process = Process.Start(psi)!;
+    var process = _processFactory(psi);
     process.StandardInput.Close();
     _runningProcesses[process.Id] = process;
     process.Exited += (_, _) => _runningProcesses.TryRemove(process.Id, out _);
@@ -954,7 +973,7 @@ internal sealed class BitwardenCliService
     }
   }
 
-  private static async Task<(string Content, bool SessionInvalid)> ReadStderrWithSessionDetectionAsync(Process process, CancellationToken token)
+  private static async Task<(string Content, bool SessionInvalid)> ReadStderrWithSessionDetectionAsync(ICliProcess process, CancellationToken token)
   {
     var sb = new System.Text.StringBuilder();
     var buffer = new char[256];
