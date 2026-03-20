@@ -4,6 +4,7 @@ using HoobiBitwardenCommandPaletteExtension.Services;
 
 namespace HoobiBitwardenCommandPaletteExtension.Tests;
 
+[Collection("SessionStore")]
 public class BitwardenSettingsManagerTests : IDisposable
 {
     private readonly string _tempDir;
@@ -22,10 +23,9 @@ public class BitwardenSettingsManagerTests : IDisposable
 
     private BitwardenSettingsManager CreateManager()
     {
-        var m = new BitwardenSettingsManager();
-        typeof(BitwardenSettingsManager)
-            .GetProperty("FilePath", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!
-            .SetValue(m, Path.Combine(_tempDir, $"settings_{Guid.NewGuid():N}.json"));
+        var tempPath = Path.Combine(_tempDir, $"settings_{Guid.NewGuid():N}.json");
+        var m = new BitwardenSettingsManager(tempPath);
+        DebugLogService.Enabled = m.DebugLogging.Value;
         return m;
     }
 
@@ -103,5 +103,26 @@ public class BitwardenSettingsManagerTests : IDisposable
         m.ClipboardClearDelay.Value = "60";
         FireSettingsChanged(m);
         Assert.Equal(60, SecureClipboardService.ClearDelaySeconds);
+    }
+
+    [Fact]
+    public void DebugLogging_DefaultOff()
+    {
+        var m = CreateManager();
+        Assert.False(m.DebugLogging.Value);
+    }
+
+    [Fact]
+    public void DebugLogging_SyncsToDebugLogService()
+    {
+        var m = CreateManager();
+        m.RememberSession.Value = true;
+        m.DebugLogging.Value = true;
+        FireSettingsChanged(m);
+        Assert.True(DebugLogService.Enabled);
+
+        m.DebugLogging.Value = false;
+        FireSettingsChanged(m);
+        Assert.False(DebugLogService.Enabled);
     }
 }

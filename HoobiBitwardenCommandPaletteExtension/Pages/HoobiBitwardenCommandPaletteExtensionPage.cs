@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -84,6 +85,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
             {
                 _initialLoadStarted = true;
                 CaptureContext(force: true);
+                DebugLogService.Log("Page", $"GetItems: first call, LastStatus={_service.LastStatus}");
 
                 // If warmup already ran, skip async init and show results immediately.
                 if (_service.LastStatus != null)
@@ -92,6 +94,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
                     switch (_service.LastStatus)
                     {
                         case VaultStatus.Unlocked when _service.IsCacheLoaded:
+                            DebugLogService.Log("Page", $"GetItems: unlocked + cache loaded, {Search(_currentSearchText).Count} items");
                             _currentItems = BuildListItems(Search(_currentSearchText));
                             IsLoading = false;
                             break;
@@ -122,6 +125,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
                 IsLoading = true;
                 _currentItems = BuildLoadingPlaceholder("Checking vault status...", "bw status");
+                DebugLogService.Log("Page", "GetItems: warmup not complete, starting InitializeAsync");
                 _ = Task.Run(InitializeAsync);
                 return _currentItems;
             }
@@ -186,6 +190,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         if (_handlingAction) return;
         CaptureContext();
         var results = Search(_currentSearchText);
+        DebugLogService.Log("Page", $"OnCacheUpdated: {results.Count} items");
         _currentItems = BuildListItems(results);
         RaiseItemsChanged();
         IsLoading = false;
@@ -205,6 +210,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     {
         IsLoading = false;
         _initComplete = true;
+        DebugLogService.Log("Page", $"RebuildForCurrentStatus: status={_service.LastStatus}, cacheLoaded={_service.IsCacheLoaded}");
 
         switch (_service.LastStatus)
         {
@@ -237,6 +243,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
     {
         try
         {
+            DebugLogService.Log("Page", "InitializeAsync: awaiting warmup");
             // Await the ongoing warmup instead of firing a concurrent bw status call,
             // which can cause the CLI to hang when both run simultaneously.
 #pragma warning disable VSTHRD003 // WarmupTask is a ThreadPool task; InitializeAsync is already on ThreadPool via Task.Run
@@ -246,6 +253,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
             var status = _service.LastStatus;
             if (status is null)
                 status = await _service.GetVaultStatusAsync().ConfigureAwait(false);
+            DebugLogService.Log("Page", $"InitializeAsync: vault status={status}");
 
             switch (status)
             {
@@ -381,6 +389,18 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         Icon = new IconInfo("\uEA56"),
     };
 
+    private static ListItem BuildCopyDebugLogItem() => new(new AnonymousCommand(() =>
+    {
+        ClipboardHelper.SetText(DebugLogService.Export());
+        Process.Start(new ProcessStartInfo("https://github.com/hoobio/command-palette-bitwarden/issues") { UseShellExecute = true });
+    })
+    { Name = "Copy Debug Log", Result = CommandResult.ShowToast("Copied debug log to clipboard") })
+    {
+        Title = "Copy Debug Log",
+        Subtitle = $"Debug logging is ON | {DebugLogService.Count} entries captured",
+        Icon = new IconInfo("\uE9D9"),
+    };
+
     private ListItem BuildLockItem() => new(new AnonymousCommand(OnLockRequested)
     { Name = "Lock", Result = CommandResult.KeepOpen() })
     {
@@ -446,12 +466,14 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         var boostSync = MatchesCommand(search, "sync");
         var boostLock = MatchesCommand(search, "lock");
         var boostLogout = MatchesCommand(search, "logout");
+        var boostDebug = DebugLogService.Enabled && MatchesCommand(search, "debug");
 
         if (boostSync) list.Add(BuildSyncItem());
         if (boostLock) list.Add(BuildLockItem());
         if (boostLogout) list.Add(BuildLogoutItem());
+        if (boostDebug) list.Add(BuildCopyDebugLogItem());
 
-        if (items.Count == 0 && !boostSync && !boostLock && !boostLogout)
+        if (items.Count == 0 && !boostSync && !boostLock && !boostLogout && !boostDebug)
             list.Add(new ListItem(new NoOpCommand()) { Title = "No results found" });
         else
         {
@@ -475,6 +497,8 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
         list.Add(BuildSetServerItem());
         if (!boostLock) list.Add(BuildLockItem());
         if (!boostLogout) list.Add(BuildLogoutItem());
+        if (DebugLogService.Enabled && !boostDebug)
+            list.Add(BuildCopyDebugLogItem());
 
         _totpItems = totpTracked.Count > 0 ? totpTracked : null;
         if (_totpItems != null)
@@ -594,6 +618,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnLockRequested()
     {
+        DebugLogService.Log("Action", "Lock requested by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
@@ -617,6 +642,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnLogoutRequested()
     {
+        DebugLogService.Log("Action", "Logout requested by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
@@ -640,6 +666,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnSyncRequested()
     {
+        DebugLogService.Log("Action", "Sync requested by user");
         _handlingAction = true;
         ClearSearchText();
         IsLoading = true;
@@ -671,6 +698,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnSetServerSubmitted(Models.ServerConfig config)
     {
+        DebugLogService.Log("Action", "Set server URL submitted by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
@@ -707,6 +735,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnUnlockSubmitted(string password)
     {
+        DebugLogService.Log("Action", "Unlock submitted by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
@@ -754,6 +783,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnLoginSubmitted(string email, string password)
     {
+        DebugLogService.Log("Action", "Login submitted by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
@@ -812,6 +842,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnTwoFactorSubmitted(string twoFactorCode)
     {
+        DebugLogService.Log("Action", "2FA code submitted by user");
         _handlingAction = true;
         ClearSearchText();
         var email = _pendingEmail;
@@ -856,6 +887,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
 
     private void OnDeviceVerificationSubmitted(string otpCode)
     {
+        DebugLogService.Log("Action", "Device verification OTP submitted by user");
         _handlingAction = true;
         ClearSearchText();
         _errorMessage = null;
