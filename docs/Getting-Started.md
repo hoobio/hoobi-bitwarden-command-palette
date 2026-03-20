@@ -9,7 +9,7 @@
 
 ### From Microsoft Store (Recommended)
 
-**[Get it from Microsoft Store](https://apps.microsoft.com/detail/9P5KS8T80MV3)** — easiest way to install with automatic updates.
+**[Get it from Microsoft Store](https://apps.microsoft.com/detail/9P5KS8T80MV3)** - easiest way to install with automatic updates.
 
 ### From GitHub Releases
 

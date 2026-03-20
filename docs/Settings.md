@@ -18,7 +18,7 @@ Open settings from the gear icon in the vault browser. All settings take effect 
 |---|---|
 | **Type** | Toggle |
 | **Default** | On |
-| **Description** | Download and display website favicons for login items. Icons are fetched from `icons.bitwarden.net` (cloud) or your self-hosted server's `/icons/` endpoint, then cached locally for 7 days so each domain is only fetched once. Disable for privacy — a generic icon will be shown instead. See [Bitwarden's website icon documentation](https://bitwarden.com/help/website-icons/) for more details. |
+| **Description** | Download and display website favicons for login items. Icons are fetched from `icons.bitwarden.net` (cloud) or your self-hosted server's `/icons/` endpoint, then cached locally for 7 days. Disable for privacy; a generic icon will be shown instead. See [Bitwarden's website icon documentation](https://bitwarden.com/help/website-icons/) for more details. |
 
 ### Auto-Lock Timeout
 
@@ -35,7 +35,7 @@ Open settings from the gear icon in the vault browser. All settings take effect 
 |---|---|
 | **Type** | Toggle |
 | **Default** | On |
-| **Description** | Display security warning tags (Weak, Old Password, HTTP, Reused, No Password) on vault items. Disable for a cleaner list without security indicators. See [Watchtower Tags](Watchtower-Tags) for details. |
+| **Description** | Display security warning tags (Weak, Old, Insecure URL) on vault items. See [Watchtower Tags](Watchtower-Tags) for details. |
 
 ### Context Awareness
 
