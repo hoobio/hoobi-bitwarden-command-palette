@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - **Windows 10 (19041+)** or later with [PowerToys Command Palette](https://learn.microsoft.com/windows/powertoys/command-palette/) enabled
-- **[Bitwarden CLI](https://bitwarden.com/help/cli/)** (`bw`) installed and available on your `PATH`
+- **[Bitwarden CLI](https://bitwarden.com/help/cli/)** (`bw`) installed and available on your `PATH`, or configured via the **CLI Path Override** [setting](Settings)
 
 ## Installation
 

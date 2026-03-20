@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
@@ -69,6 +70,55 @@ internal sealed class BitwardenCliService
     IconsUrl = null;
   }
 
+  internal static string ResolveCliExecutable(string? pathOverride)
+  {
+    if (string.IsNullOrWhiteSpace(pathOverride))
+      return "bw";
+
+    var trimmed = pathOverride.Trim();
+    var name = Path.GetFileName(trimmed);
+    if (name.Equals("bw", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("bw.exe", StringComparison.OrdinalIgnoreCase))
+      return trimmed;
+
+    return Path.Combine(trimmed, "bw");
+  }
+
+  internal static string? ResolveDataDirectory(string? cliPathOverride, bool usePortableDir, string? dataDirOverride)
+  {
+    if (!string.IsNullOrWhiteSpace(dataDirOverride))
+      return dataDirOverride.Trim();
+
+    if (usePortableDir && !string.IsNullOrWhiteSpace(cliPathOverride))
+    {
+      var trimmed = cliPathOverride.Trim();
+      var name = Path.GetFileName(trimmed);
+      if (name.Equals("bw", StringComparison.OrdinalIgnoreCase)
+          || name.Equals("bw.exe", StringComparison.OrdinalIgnoreCase))
+        return Path.GetDirectoryName(trimmed);
+      return trimmed;
+    }
+
+    return null;
+  }
+
+  private string CliExecutable => ResolveCliExecutable(_settings?.CliDirectoryOverride.Value);
+
+  private string? DataDirectory => ResolveDataDirectory(
+    _settings?.CliDirectoryOverride.Value,
+    _settings?.UsePortableDataDirectory.Value ?? false,
+    _settings?.CliDataDirectoryOverride.Value);
+
+  private void ApplyEnvironment(ProcessStartInfo psi)
+  {
+    if (_sessionKey != null)
+      psi.Environment["BW_SESSION"] = _sessionKey;
+
+    var dataDir = DataDirectory;
+    if (dataDir != null)
+      psi.Environment["BITWARDENCLI_APPDATA_DIR"] = dataDir;
+  }
+
   internal IReadOnlyDictionary<string, string> Folders
   {
     get { lock (_cacheLock) return _folders; }
@@ -79,15 +129,22 @@ internal sealed class BitwardenCliService
   public event Action? WarmupCompleted;
   public event Action? AutoLocking;
   public event Action? AutoLocked;
+  public event Action? CliConfigChanged;
+
+  private string? _lastDataDirectory;
 
   public BitwardenCliService(BitwardenSettingsManager? settings = null, CliProcessFactory? processFactory = null)
   {
     _settings = settings;
     _processFactory = processFactory ?? DefaultProcessFactory;
+    _lastDataDirectory = DataDirectory;
     ApplyAutoLockSetting();
     AccessTracker.ItemAccessed += ResetAutoLockTimer;
     if (_settings != null)
+    {
       _settings.Settings.SettingsChanged += (_, _) => ApplyAutoLockSetting();
+      _settings.Settings.SettingsChanged += (_, _) => CheckCliConfigChanged();
+    }
   }
 
   internal void LoadTestData(List<BitwardenItem> items, Dictionary<string, string> folders)
@@ -100,6 +157,32 @@ internal sealed class BitwardenCliService
     var minutes = int.TryParse(_settings?.AutoLockTimeout.Value, out var m) ? m : 0;
     _autoLockTimeout = minutes > 0 ? TimeSpan.FromMinutes(minutes) : Timeout.InfiniteTimeSpan;
     ResetAutoLockTimer();
+  }
+
+  private void CheckCliConfigChanged()
+  {
+    var newData = DataDirectory;
+    if (newData == _lastDataDirectory) return;
+    _lastDataDirectory = newData;
+    ResetForCliConfigChange();
+  }
+
+  private void ResetForCliConfigChange()
+  {
+    DisposeDeviceVerificationProcess();
+    KillAllRunning();
+    _sessionKey = null;
+    _lastStatus = null;
+    ResetStaticState();
+    lock (_cacheLock)
+    {
+      _cache = [];
+      _cacheLoaded = false;
+    }
+    SessionStore.Clear();
+    _autoLockTimer?.Dispose();
+    _autoLockTimer = null;
+    CliConfigChanged?.Invoke();
   }
 
   public void ResetAutoLockTimer()
@@ -191,13 +274,15 @@ internal sealed class BitwardenCliService
   {
     try
     {
-      using var process = _processFactory(new ProcessStartInfo(BwCliPath, "--version")
+      var psi = new ProcessStartInfo(CliExecutable, "--version")
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         CreateNoWindow = true,
-      });
+      };
+      ApplyEnvironment(psi);
+      using var process = _processFactory(psi);
       var line = process.StandardOutput.ReadLine();
       var available = line != null;
       try { process.Kill(true); } catch { }
@@ -254,7 +339,7 @@ internal sealed class BitwardenCliService
   {
     try
     {
-      var psi = new ProcessStartInfo(BwCliPath, "unlock --passwordenv BW_MP --raw")
+      var psi = new ProcessStartInfo(CliExecutable, "unlock --passwordenv BW_MP --raw")
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
@@ -264,8 +349,7 @@ internal sealed class BitwardenCliService
       };
 
       psi.Environment["BW_MP"] = masterPassword;
-      if (_sessionKey != null)
-        psi.Environment["BW_SESSION"] = _sessionKey;
+      ApplyEnvironment(psi);
 
       using var process = _processFactory(psi);
       process.StandardInput.Close();
@@ -343,7 +427,7 @@ internal sealed class BitwardenCliService
       }
       args += " --raw";
 
-      var psi = new ProcessStartInfo(BwCliPath, args)
+      var psi = new ProcessStartInfo(CliExecutable, args)
       {
         UseShellExecute = false,
         RedirectStandardOutput = true,
@@ -353,6 +437,7 @@ internal sealed class BitwardenCliService
       };
 
       psi.Environment["BW_MP"] = password;
+      ApplyEnvironment(psi);
 
       var process = _processFactory(psi);
       var cts = new CancellationTokenSource(CliTimeoutMs);
@@ -850,11 +935,9 @@ internal sealed class BitwardenCliService
     };
   }
 
-  internal const string BwCliPath = "bw";
-
   private ICliProcess StartProcess(string args)
   {
-    var psi = new ProcessStartInfo(BwCliPath, args)
+    var psi = new ProcessStartInfo(CliExecutable, args)
     {
       UseShellExecute = false,
       RedirectStandardOutput = true,
@@ -863,8 +946,7 @@ internal sealed class BitwardenCliService
       CreateNoWindow = true,
     };
 
-    if (_sessionKey != null)
-      psi.Environment["BW_SESSION"] = _sessionKey;
+    ApplyEnvironment(psi);
 
     var process = _processFactory(psi);
     process.StandardInput.Close();

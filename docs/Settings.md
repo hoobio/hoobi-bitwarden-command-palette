@@ -104,3 +104,27 @@ Open settings from the gear icon in the vault browser. All settings take effect 
 | **Default** | 10 seconds |
 | **Options** | 10 seconds, 15 seconds, 30 seconds, 60 seconds, 2 minutes |
 | **Description** | How long to wait before auto-clearing sensitive clipboard data. Only applies when Auto-Clear Clipboard is enabled. |
+
+### CLI Path Override
+
+| | |
+|---|---|
+| **Type** | Text |
+| **Default** | *(empty)* |
+| **Description** | Path to the Bitwarden CLI. Accepts a directory containing `bw`, or a direct path to `bw`/`bw.exe` (e.g. `C:\tools\bw-portable` or `C:\tools\bw-portable\bw.exe`). Leave empty to use the default PATH-based resolution. |
+
+### Use CLI Path as Data Directory
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | Off |
+| **Description** | Store Bitwarden CLI data (`data.json`) alongside the CLI executable instead of the default location. Sets the `BITWARDENCLI_APPDATA_DIR` environment variable to the CLI directory. Requires **CLI Path Override** to be set. Useful for fully portable Bitwarden setups. |
+
+### CLI Data Directory Override
+
+| | |
+|---|---|
+| **Type** | Text |
+| **Default** | *(empty)* |
+| **Description** | Custom directory for Bitwarden CLI data (`data.json`). Sets the `BITWARDENCLI_APPDATA_DIR` environment variable. Takes precedence over the portable directory toggle. Leave empty to use the default location, or the portable CLI directory if the toggle above is enabled. |
