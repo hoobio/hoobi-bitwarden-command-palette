@@ -216,25 +216,27 @@ jobs:
   build_x64:
     name: build (x64)
     needs: [detect-changes]
-    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
+    if: always()
     uses: ./.github/workflows/_build.yaml
     with:
       platform: x64
+      skip: ${{ needs.detect-changes.result == 'success' && needs.detect-changes.outputs.code_changed != 'true' }}
     secrets: inherit
 
   build_arm64:
     name: build (ARM64)
     needs: [detect-changes]
-    if: always() && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
+    if: always()
     uses: ./.github/workflows/_build.yaml
     with:
       platform: ARM64
+      skip: ${{ needs.detect-changes.result == 'success' && needs.detect-changes.outputs.code_changed != 'true' }}
     secrets: inherit
 
   wack_x64:
     name: wack (x64)
     needs: [build_x64, detect-changes]
-    if: always() && needs.build_x64.result == 'success'
+    if: always() && needs.build_x64.result == 'success' && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
     uses: ./.github/workflows/_wack.yaml
     with:
       platform: x64
@@ -243,7 +245,7 @@ jobs:
   wack_arm64:
     name: wack (ARM64)
     needs: [build_arm64, detect-changes]
-    if: always() && needs.build_arm64.result == 'success'
+    if: always() && needs.build_arm64.result == 'success' && (needs.detect-changes.result == 'skipped' || needs.detect-changes.outputs.code_changed == 'true')
     uses: ./.github/workflows/_wack.yaml
     with:
       platform: ARM64
