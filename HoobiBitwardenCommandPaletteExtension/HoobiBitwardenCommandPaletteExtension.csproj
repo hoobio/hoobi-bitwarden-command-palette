@@ -46,6 +46,7 @@
     <PackageReference Include="Microsoft.Windows.CsWinRT" />
     <PackageReference Include="Otp.NET" />
     <PackageReference Include="Shmuelie.WinRTServer" />
+    <PackageReference Include="Svg.Skia" />
 
     <!-- Workaround: Microsoft.Windows.SDK.BuildTools.MSIX net6.0 task DLL depends on
          System.Security.Permissions v8.0.0.0 but doesn't ship it alongside itself.
