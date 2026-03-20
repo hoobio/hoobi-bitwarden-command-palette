@@ -342,6 +342,19 @@ public class BitwardenCliServiceTests
     Assert.Equal(4, BitwardenCliService.Relevance(item, "GitHub", regex));
   }
 
+  // --- MaskJsonStringContent ---
+
+  [Theory]
+  [InlineData("{\"key\":\"password123\"}", "{\"···\":\"···········\"}")]
+  [InlineData("{\"a\":1,\"b\":\"secret\"}", "{\"·\":1,\"·\":\"······\"}")]
+  [InlineData("[{\"type\":1}]", "[{\"····\":1}]")]
+  [InlineData("plain text no json", "plain text no json")]
+  [InlineData("{\"esc\":\"val\\\"ue\"}", "{\"···\":\"·······\"}")]
+  public void MaskJsonStringContent_MasksStringValues(string input, string expected)
+  {
+    Assert.Equal(expected, BitwardenCliService.MaskJsonStringContent(input));
+  }
+
   // --- ExtractJsonArray ---
 
   [Fact]

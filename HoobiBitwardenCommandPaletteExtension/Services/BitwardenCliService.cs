@@ -1385,14 +1385,30 @@ internal sealed class BitwardenCliService
       DebugLogService.Log("Cache", $"ParseItems exception after {items.Count} items: {ex.GetType().Name}: {ex.Message}");
       if (ex is System.Text.Json.JsonException jsonEx && jsonEx.BytePositionInLine is long pos && pos > 0 && pos < json.Length)
       {
-        var start = (int)Math.Max(0, pos - 60);
-        var end = (int)Math.Min(json.Length, pos + 60);
-        var snippet = json[start..(int)pos] + ">>HERE<<" + json[(int)pos..end];
-        DebugLogService.Log("Cache", $"ParseItems context around error: ...{snippet}...");
+        var start = (int)Math.Max(0, pos - 80);
+        var end = (int)Math.Min(json.Length, pos + 20);
+        var snippet = MaskJsonStringContent(json[start..(int)pos]) + ">>HERE<<" + MaskJsonStringContent(json[(int)pos..end]);
+        DebugLogService.Log("Cache", $"ParseItems structure around error (string values masked): ...{snippet}...");
       }
     }
 
     return items;
+  }
+
+  internal static string MaskJsonStringContent(string json)
+  {
+    var sb = new System.Text.StringBuilder(json.Length);
+    var inString = false;
+    var escape = false;
+    foreach (var c in json)
+    {
+      if (escape) { escape = false; if (inString) sb.Append('·'); else sb.Append(c); continue; }
+      if (c == '\\' && inString) { escape = true; sb.Append('·'); continue; }
+      if (c == '"') { inString = !inString; sb.Append('"'); continue; }
+      if (inString) { sb.Append('·'); continue; }
+      sb.Append(c);
+    }
+    return sb.ToString();
   }
 
   private static BitwardenItem ParseLogin(JsonNode? login, string id, string name, string? notes, DateTime revisionDate, Dictionary<string, CustomField> customFields, bool favorite, string? folderId, string? organizationId, int reprompt)
