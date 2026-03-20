@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.7.0](https://github.com/hoobio/command-palette-bitwarden/compare/v1.6.3...v1.7.0) (2026-03-20)
+
+
+### Features
+
+* CLI path overrides, portable data directory, and card brand logos ([#92](https://github.com/hoobio/command-palette-bitwarden/issues/92)) ([628f75c](https://github.com/hoobio/command-palette-bitwarden/commit/628f75c74f0a221fc62422351e424301c197c37f))
+
+
+### Documentation
+
+* add community health files (CODE_OF_CONDUCT.md, CONTRIBUTING.md, ([15aa320](https://github.com/hoobio/command-palette-bitwarden/commit/15aa3204ee2fe7bbfbc798c6bbef58bab06a20d8))
+
+
+### Continuous Integration
+
+* fix pre-release and release jobs skipped on push to main ([#94](https://github.com/hoobio/command-palette-bitwarden/issues/94)) ([a4d01cc](https://github.com/hoobio/command-palette-bitwarden/commit/a4d01cc044f54da524dcc11e1d282d76ac72c262))
+* fix pre-release version stamping and required checks on docs PRs ([#95](https://github.com/hoobio/command-palette-bitwarden/issues/95)) ([15aa320](https://github.com/hoobio/command-palette-bitwarden/commit/15aa3204ee2fe7bbfbc798c6bbef58bab06a20d8))
+
 ## [1.6.3](https://github.com/hoobio/command-palette-bitwarden/compare/v1.6.2...v1.6.3) (2026-03-19)
 
 
