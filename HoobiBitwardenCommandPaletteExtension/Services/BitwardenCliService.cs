@@ -294,7 +294,10 @@ internal sealed class BitwardenCliService
           DebugLogService.Log("Status", "Stored session found in Credential Manager, verifying...");
           _sessionKey = stored;
           if (await VerifySessionAsync())
+          {
+            Pages.RepromptPage.RecordVerification();
             return SetStatus(VaultStatus.Unlocked);
+          }
           DebugLogService.Log("Status", "Stored session verification failed, clearing");
           SessionStore.Clear();
         }

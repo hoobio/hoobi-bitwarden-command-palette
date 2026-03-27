@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
@@ -13,6 +14,11 @@ internal record VerificationRequest(string Password, BitwardenCliService Service
 internal sealed partial class RepromptPage : ContentPage
 {
   internal static int GracePeriodSeconds { get; set; } = 60;
+
+  private static readonly string GraceFile = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "HoobiBitwardenCommandPalette", "grace.json");
+
   private static long _lastVerifiedTs;
 
   internal static event Action? GraceStarted;
@@ -20,18 +26,55 @@ internal sealed partial class RepromptPage : ContentPage
 
   internal static bool IsWithinGracePeriod()
   {
+    if (GracePeriodSeconds <= 0) return false;
+
     var ts = Interlocked.Read(ref _lastVerifiedTs);
-    return ts != 0 && GracePeriodSeconds > 0
-      && Stopwatch.GetElapsedTime(ts).TotalSeconds < GracePeriodSeconds;
+    if (ts != 0 && Stopwatch.GetElapsedTime(ts).TotalSeconds < GracePeriodSeconds)
+      return true;
+
+    try
+    {
+      if (!File.Exists(GraceFile)) return false;
+      var json = File.ReadAllText(GraceFile);
+      if (JsonNode.Parse(json)?["verified"]?.GetValue<long>() is long utcTicks)
+      {
+        var elapsed = DateTime.UtcNow - new DateTime(utcTicks, DateTimeKind.Utc);
+        if (elapsed.TotalSeconds < GracePeriodSeconds)
+        {
+          Interlocked.CompareExchange(ref _lastVerifiedTs,
+            Stopwatch.GetTimestamp() - (long)(elapsed.TotalSeconds * Stopwatch.Frequency),
+            0);
+          return true;
+        }
+      }
+    }
+    catch { }
+
+    return false;
   }
 
   internal static void RecordVerification()
   {
     Interlocked.Exchange(ref _lastVerifiedTs, Stopwatch.GetTimestamp());
+    PersistGrace();
     GraceStarted?.Invoke();
   }
 
-  internal static void ClearGracePeriod() => Interlocked.Exchange(ref _lastVerifiedTs, 0);
+  internal static void ClearGracePeriod()
+  {
+    Interlocked.Exchange(ref _lastVerifiedTs, 0);
+    try { File.Delete(GraceFile); } catch { }
+  }
+
+  private static void PersistGrace()
+  {
+    try
+    {
+      Directory.CreateDirectory(Path.GetDirectoryName(GraceFile)!);
+      File.WriteAllText(GraceFile, $"{{\"verified\":{DateTime.UtcNow.Ticks}}}");
+    }
+    catch { }
+  }
 
   internal static void RaiseVerificationRequested(VerificationRequest request) =>
     VerificationRequested?.Invoke(request);

@@ -317,4 +317,69 @@ public class VaultItemHelperTests
       Assert.IsNotType<RepromptPage>(ci.Command);
     RepromptPage.ClearGracePeriod();
   }
+
+  [Fact]
+  public void RecordVerification_PersistsGraceFile()
+  {
+    RepromptPage.GracePeriodSeconds = 60;
+    RepromptPage.ClearGracePeriod();
+
+    RepromptPage.RecordVerification();
+
+    var graceFile = Path.Combine(
+      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+      "HoobiBitwardenCommandPalette", "grace.json");
+    Assert.True(File.Exists(graceFile));
+    RepromptPage.ClearGracePeriod();
+  }
+
+  [Fact]
+  public void ClearGracePeriod_DeletesGraceFile()
+  {
+    RepromptPage.GracePeriodSeconds = 60;
+    RepromptPage.RecordVerification();
+
+    RepromptPage.ClearGracePeriod();
+
+    var graceFile = Path.Combine(
+      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+      "HoobiBitwardenCommandPalette", "grace.json");
+    Assert.False(File.Exists(graceFile));
+  }
+
+  [Fact]
+  public void IsWithinGracePeriod_ReadsFromDisk_WhenInProcessCacheEmpty()
+  {
+    RepromptPage.GracePeriodSeconds = 60;
+    RepromptPage.ClearGracePeriod();
+
+    // Write a fresh grace file directly (simulating a previous process)
+    var graceDir = Path.Combine(
+      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+      "HoobiBitwardenCommandPalette");
+    Directory.CreateDirectory(graceDir);
+    File.WriteAllText(Path.Combine(graceDir, "grace.json"),
+      $"{{\"verified\":{DateTime.UtcNow.Ticks}}}");
+
+    Assert.True(RepromptPage.IsWithinGracePeriod());
+    RepromptPage.ClearGracePeriod();
+  }
+
+  [Fact]
+  public void IsWithinGracePeriod_ExpiredGraceFile_ReturnsFalse()
+  {
+    RepromptPage.GracePeriodSeconds = 60;
+    RepromptPage.ClearGracePeriod();
+
+    // Write an expired grace file (2 minutes ago)
+    var graceDir = Path.Combine(
+      Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+      "HoobiBitwardenCommandPalette");
+    Directory.CreateDirectory(graceDir);
+    File.WriteAllText(Path.Combine(graceDir, "grace.json"),
+      $"{{\"verified\":{DateTime.UtcNow.AddMinutes(-2).Ticks}}}");
+
+    Assert.False(RepromptPage.IsWithinGracePeriod());
+    RepromptPage.ClearGracePeriod();
+  }
 }
