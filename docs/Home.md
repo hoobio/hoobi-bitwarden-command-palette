@@ -6,6 +6,8 @@ A free, open-source replacement for 1Password Quick Access, built for the [Power
 
 - [Getting Started](Getting-Started)
 - [Search & Filtering](Search-and-Filtering)
+- [Vault Item Actions](Vault-Item-Actions)
+- [Password Generator](Password-Generator)
 - [Context Awareness](Context-Awareness)
 - [Clipboard Security](Clipboard-Security)
 - [TOTP Codes](TOTP-Codes)
@@ -20,6 +22,8 @@ A free, open-source replacement for 1Password Quick Access, built for the [Power
 | Feature | Description |
 |---------|-------------|
 | Vault search | Search all vault items directly from the Command Palette |
+| Password generator | Generate random passwords and copy to clipboard |
+| Quick rotate | Rotate a vault item's password in-place with one action |
 | Fallback search | Bitwarden results appear as fallback suggestions when typing anywhere |
 | Secure clipboard | Passwords excluded from clipboard history, auto-cleared on a timer |
 | Favorites | Star tag and priority sorting for favorite items |

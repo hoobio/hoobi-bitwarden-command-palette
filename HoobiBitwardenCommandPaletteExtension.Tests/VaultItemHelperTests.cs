@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using HoobiBitwardenCommandPaletteExtension.Helpers;
 using HoobiBitwardenCommandPaletteExtension.Models;
 using HoobiBitwardenCommandPaletteExtension.Pages;
@@ -316,5 +318,77 @@ public class VaultItemHelperTests
     foreach (var ci in copyItems)
       Assert.IsNotType<RepromptPage>(ci.Command);
     RepromptPage.ClearGracePeriod();
+  }
+
+  [Fact]
+  public void BuildContextItems_Login_WithSettings_IncludesRotatePassword()
+  {
+    var settings = new BitwardenSettingsManager(
+      Path.Combine(Path.GetTempPath(), $"bw_test_{Guid.NewGuid():N}.json"));
+    var svc = new BitwardenCliService();
+    var item = new BitwardenItem
+    {
+      Id = "test-login",
+      Type = BitwardenItemType.Login,
+      Reprompt = 0,
+      Username = "user@test.com",
+      Password = "secret",
+    };
+    var contextItems = VaultItemHelper.BuildContextItems(item, svc, settings);
+    var rotateItem = contextItems.FirstOrDefault(c => c.Title == "Rotate Password");
+    Assert.NotNull(rotateItem);
+  }
+
+  [Fact]
+  public void BuildContextItems_Login_WithoutSettings_NoRotatePassword()
+  {
+    var item = new BitwardenItem
+    {
+      Id = "test-login",
+      Type = BitwardenItemType.Login,
+      Reprompt = 0,
+      Username = "user@test.com",
+      Password = "secret",
+    };
+    var contextItems = VaultItemHelper.BuildContextItems(item);
+    var rotateItem = contextItems.FirstOrDefault(c => c.Title == "Rotate Password");
+    Assert.Null(rotateItem);
+  }
+
+  [Fact]
+  public void BuildContextItems_Login_Reprompt_WithSettings_RotatePasswordIsRepromptPage()
+  {
+    RepromptPage.ClearGracePeriod();
+    var settings = new BitwardenSettingsManager(
+      Path.Combine(Path.GetTempPath(), $"bw_test_{Guid.NewGuid():N}.json"));
+    var svc = new BitwardenCliService();
+    var item = new BitwardenItem
+    {
+      Id = "test-login",
+      Type = BitwardenItemType.Login,
+      Reprompt = 1,
+      Username = "user@test.com",
+      Password = "secret",
+    };
+    var contextItems = VaultItemHelper.BuildContextItems(item, svc, settings);
+    var rotateItem = contextItems.First(c => c.Title == "Rotate Password");
+    Assert.IsType<RepromptPage>(rotateItem.Command);
+  }
+
+  [Fact]
+  public void BuildContextItems_SecureNote_WithSettings_NoRotatePassword()
+  {
+    var settings = new BitwardenSettingsManager(
+      Path.Combine(Path.GetTempPath(), $"bw_test_{Guid.NewGuid():N}.json"));
+    var svc = new BitwardenCliService();
+    var item = new BitwardenItem
+    {
+      Id = "test-note",
+      Type = BitwardenItemType.SecureNote,
+      Notes = "secret",
+    };
+    var contextItems = VaultItemHelper.BuildContextItems(item, svc, settings);
+    var rotateItem = contextItems.FirstOrDefault(c => c.Title == "Rotate Password");
+    Assert.Null(rotateItem);
   }
 }

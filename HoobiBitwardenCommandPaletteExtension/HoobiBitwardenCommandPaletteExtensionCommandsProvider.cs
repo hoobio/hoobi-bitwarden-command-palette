@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
+using HoobiBitwardenCommandPaletteExtension.Pages;
 using HoobiBitwardenCommandPaletteExtension.Services;
 
 namespace HoobiBitwardenCommandPaletteExtension;
@@ -33,6 +34,11 @@ public partial class HoobiBitwardenCommandPaletteExtensionCommandsProvider : Com
                 Title = "Bitwarden",
 #endif
                 Subtitle = "Search your vault",
+            },
+            new CommandItem(new GeneratePasswordPage(_service, _settingsManager))
+            {
+                Title = "Generate Password",
+                Subtitle = "Generate a random password and copy to clipboard",
             },
         ];
 

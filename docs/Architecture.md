@@ -28,7 +28,9 @@ HoobiBitwardenCommandPaletteExtension/
 │   └── BitwardenItem.cs               # Vault item data model (JSON deserialization)
 ├── Pages/
 │   ├── HoobiBitwardenCommandPaletteExtensionPage.cs  # Main vault list (DynamicListPage)
+│   ├── GeneratePasswordPage.cs         # Password generator form
 │   ├── LoginPage.cs                    # Email/password login form
+│   ├── RotatePasswordPage.cs           # Quick-rotate password form for vault items
 │   ├── SetServerPage.cs               # Server URL configuration form
 │   └── UnlockVaultPage.cs             # Master password unlock form
 ├── Services/

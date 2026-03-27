@@ -778,6 +778,65 @@ internal sealed class BitwardenCliService
     catch (Exception ex) { DebugLogService.Log("Auth", $"bw logout failed (non-critical): {ex.GetType().Name}: {ex.Message}"); }
   }
 
+  public async Task<string> GeneratePasswordAsync(int length = 20, bool uppercase = true, bool lowercase = true, bool numbers = true, bool special = true)
+  {
+    DebugLogService.Log("Generate", $"GeneratePasswordAsync: length={length} upper={uppercase} lower={lowercase} num={numbers} special={special}");
+    var args = $"generate --length {length}";
+    if (uppercase) args += " --uppercase";
+    if (lowercase) args += " --lowercase";
+    if (numbers) args += " --number";
+    if (special) args += " --special";
+
+    var result = (await RunCliAsync(args)).Trim();
+    DebugLogService.Log("Generate", $"Generated password ({result.Length} chars)");
+    return result;
+  }
+
+  public async Task<(bool Success, string? Error)> EditItemPasswordAsync(string itemId, string newPassword)
+  {
+    DebugLogService.Log("Edit", $"EditItemPasswordAsync: itemId={itemId}");
+    try
+    {
+      var getOutput = await RunCliAsync($"get item {itemId}");
+      var itemJson = JsonNode.Parse(getOutput);
+      if (itemJson == null)
+        return (false, "Failed to retrieve item");
+
+      var login = itemJson["login"]?.AsObject();
+      if (login == null)
+        return (false, "Item is not a login type");
+
+      login["password"] = newPassword;
+      login["passwordRevisionDate"] = DateTime.UtcNow.ToString("o");
+
+      var encoded = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(itemJson.ToJsonString()));
+      var editOutput = await RunCliAsync($"edit item {itemId} {encoded}");
+
+      var editResult = JsonNode.Parse(editOutput);
+      if (editResult?["id"] != null)
+      {
+        DebugLogService.Log("Edit", "Item password updated successfully, syncing...");
+        _ = Task.Run(async () =>
+        {
+          try { await SyncVaultAsync(); }
+          catch (Exception ex) { DebugLogService.Log("Edit", $"Background sync after edit failed: {ex.Message}"); }
+        });
+        return (true, null);
+      }
+
+      return (false, editOutput.Trim());
+    }
+    catch (InvalidOperationException)
+    {
+      throw;
+    }
+    catch (Exception ex)
+    {
+      DebugLogService.Log("Edit", $"EditItemPasswordAsync failed: {ex.GetType().Name}: {ex.Message}");
+      return (false, ex.Message);
+    }
+  }
+
   public async Task LockAsync()
   {
     DebugLogService.Log("Lock", "LockAsync called");

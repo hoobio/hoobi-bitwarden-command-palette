@@ -56,6 +56,17 @@ public class BitwardenSettingsManagerTests : IDisposable
     }
 
     [Fact]
+    public void Constructor_DefaultGeneratorSettings()
+    {
+        var m = CreateManager();
+        Assert.Equal("20", m.GeneratorLength.Value);
+        Assert.True(m.GeneratorUppercase.Value);
+        Assert.True(m.GeneratorLowercase.Value);
+        Assert.True(m.GeneratorNumbers.Value);
+        Assert.True(m.GeneratorSpecial.Value);
+    }
+
+    [Fact]
     public void OnSettingsChanged_ClearsSession_WhenRememberSessionDisabled()
     {
         var m = CreateManager();

@@ -155,6 +155,45 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         "Enable debug logging to help diagnose issues. When enabled, a 'Copy Debug Log' command appears in the vault browser. Logs are kept in memory only and cleared when the extension restarts",
         false);
 
+    public ChoiceSetSetting GeneratorLength { get; } = new(
+        "generatorLength",
+        "Generator: Password Length",
+        "Default length for generated passwords",
+        [
+            new("8", "8"),
+            new("12", "12"),
+            new("16", "16"),
+            new("20", "20"),
+            new("24", "24"),
+            new("32", "32"),
+            new("48", "48"),
+            new("64", "64"),
+        ]);
+
+    public ToggleSetting GeneratorUppercase { get; } = new(
+        "generatorUppercase",
+        "Generator: Uppercase (A-Z)",
+        "Include uppercase characters in generated passwords",
+        true);
+
+    public ToggleSetting GeneratorLowercase { get; } = new(
+        "generatorLowercase",
+        "Generator: Lowercase (a-z)",
+        "Include lowercase characters in generated passwords",
+        true);
+
+    public ToggleSetting GeneratorNumbers { get; } = new(
+        "generatorNumbers",
+        "Generator: Numbers (0-9)",
+        "Include numbers in generated passwords",
+        true);
+
+    public ToggleSetting GeneratorSpecial { get; } = new(
+        "generatorSpecial",
+        "Generator: Special (!@#$%)",
+        "Include special characters in generated passwords",
+        true);
+
     public BitwardenSettingsManager(string? settingsFilePath = null)
     {
         Directory.CreateDirectory(SettingsDir);
@@ -163,6 +202,7 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         TotpTagStyle.Value = "static";
         BackgroundRefresh.Value = "5";
         RepromptGracePeriod.Value = "60";
+        GeneratorLength.Value = "20";
         Settings.Add(RememberSession);
         Settings.Add(ShowWebsiteIcons);
         Settings.Add(AutoLockTimeout);
@@ -181,6 +221,11 @@ internal sealed class BitwardenSettingsManager : JsonSettingsManager
         Settings.Add(CliDataDirectoryOverride);
         Settings.Add(RepromptGracePeriod);
         Settings.Add(DebugLogging);
+        Settings.Add(GeneratorLength);
+        Settings.Add(GeneratorUppercase);
+        Settings.Add(GeneratorLowercase);
+        Settings.Add(GeneratorNumbers);
+        Settings.Add(GeneratorSpecial);
         CaptureDefaults();
         Settings.SettingsChanged += OnSettingsChanged;
         LoadSettings();

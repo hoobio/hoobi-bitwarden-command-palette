@@ -10,6 +10,7 @@ Each vault item type exposes different actions. Select an item to trigger the de
 | Copy Username | Copies the username | Standard |
 | Copy Password | Copies the password | Secure (excluded + auto-clear) |
 | Copy TOTP Code | Copies the current TOTP code (if configured) | Secure |
+| Rotate Password | Generate a new password, save to vault, and copy | Secure |
 | Copy Custom Fields | One action per custom field | Secure for hidden fields, standard for others |
 
 ## Card Items

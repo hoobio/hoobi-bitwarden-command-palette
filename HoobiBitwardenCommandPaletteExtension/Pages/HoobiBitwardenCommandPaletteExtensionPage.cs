@@ -530,7 +530,7 @@ internal sealed partial class HoobiBitwardenCommandPaletteExtensionPage : Dynami
             Title = item.Name,
             Subtitle = item.Subtitle,
             Icon = VaultItemHelper.GetIcon(item, showWebsiteIcons),
-            MoreCommands = VaultItemHelper.BuildContextItems(item, _service),
+            MoreCommands = VaultItemHelper.BuildContextItems(item, _service, _settings),
         };
 
         var tags = VaultItemHelper.BuildTags(item, showWatchtower, _context, showContextTag, totpTagStyle, showPasskeyTag, showProtectedTag);

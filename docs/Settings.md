@@ -153,3 +153,48 @@ Open settings from the gear icon in the vault browser. All settings take effect 
 | **Default** | 1 minute |
 | **Options** | No grace period, 30 seconds, 1 minute, 2 minutes, 5 minutes |
 | **Description** | After verifying your master password for a protected item, skip re-verification for this duration. During the grace period, protected actions execute instantly without any prompt. Set to **No grace period** to always require re-entry. The grace period is cleared when the vault is locked or you log out. |
+
+## Generator Settings
+
+These settings control the defaults for the [Password Generator](Password-Generator) and [Quick Rotate](Password-Generator#quick-rotate-password) features.
+
+### Generator: Password Length
+
+| | |
+|---|---|
+| **Type** | Choice (dropdown) |
+| **Default** | 20 |
+| **Options** | 8, 12, 16, 20, 24, 32, 48, 64 |
+| **Description** | Default length for generated passwords. Can be overridden per-generation in the password generator form. |
+
+### Generator: Uppercase (A-Z)
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | On |
+| **Description** | Include uppercase characters in generated passwords. |
+
+### Generator: Lowercase (a-z)
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | On |
+| **Description** | Include lowercase characters in generated passwords. |
+
+### Generator: Numbers (0-9)
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | On |
+| **Description** | Include numbers in generated passwords. |
+
+### Generator: Special (!@#$%)
+
+| | |
+|---|---|
+| **Type** | Toggle |
+| **Default** | On |
+| **Description** | Include special characters in generated passwords. |

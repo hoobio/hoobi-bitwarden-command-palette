@@ -126,9 +126,11 @@ internal sealed class FakeProcessFactory
       throw new InvalidOperationException($"No fake process queued for: {psi.Arguments}");
     LastArgs = psi.Arguments;
     LastPsi = psi;
+    AllArgs.Add(psi.Arguments);
     return _queue.Dequeue();
   }
 
   public string? LastArgs { get; private set; }
   public System.Diagnostics.ProcessStartInfo? LastPsi { get; private set; }
+  public List<string> AllArgs { get; } = [];
 }

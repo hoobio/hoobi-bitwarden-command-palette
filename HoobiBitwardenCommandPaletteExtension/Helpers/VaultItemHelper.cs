@@ -53,7 +53,7 @@ internal static partial class VaultItemHelper
     { UseShellExecute = true }),
   };
 
-  internal static CommandContextItem[] BuildContextItems(BitwardenItem item, BitwardenCliService? service = null)
+  internal static CommandContextItem[] BuildContextItems(BitwardenItem item, BitwardenCliService? service = null, BitwardenSettingsManager? settings = null)
   {
     var items = new List<CommandContextItem>();
     var id = item.Id;
@@ -62,7 +62,7 @@ internal static partial class VaultItemHelper
     switch (item.Type)
     {
       case BitwardenItemType.Login:
-        AddLoginContextItems(items, item, id, reprompt);
+        AddLoginContextItems(items, item, id, reprompt, service, settings);
         break;
       case BitwardenItemType.SecureNote:
         AddNoteContextItems(items, item, id, reprompt);
@@ -167,7 +167,7 @@ internal static partial class VaultItemHelper
       tags.Add(new Tag("Insecure URL") { Foreground = ColorHelpers.FromRgb(0xF2, 0x87, 0x79) });
   }
 
-  private static void AddLoginContextItems(List<CommandContextItem> items, BitwardenItem item, string id, BitwardenCliService? reprompt = null)
+  private static void AddLoginContextItems(List<CommandContextItem> items, BitwardenItem item, string id, BitwardenCliService? reprompt = null, BitwardenCliService? service = null, BitwardenSettingsManager? settings = null)
   {
     if (!string.IsNullOrEmpty(item.Username))
     {
@@ -206,6 +206,36 @@ internal static partial class VaultItemHelper
         Title = "Open in Browser",
         Icon = new IconInfo("\uE774"),
         RequestedShortcut = KeyChordHelpers.FromModifiers(alt: true, vkey: VirtualKey.Enter),
+      });
+    }
+
+    if (service != null && settings != null)
+    {
+      ICommand rotateCmd = reprompt != null && !RepromptPage.IsWithinGracePeriod()
+        ? new RepromptPage(reprompt, () =>
+        {
+#pragma warning disable VSTHRD002 // Synchronous callback from SDK RepromptPage
+          var pw = service.GeneratePasswordAsync(
+            int.TryParse(settings.GeneratorLength.Value, out var l) ? l : 20,
+            settings.GeneratorUppercase.Value,
+            settings.GeneratorLowercase.Value,
+            settings.GeneratorNumbers.Value,
+            settings.GeneratorSpecial.Value).GetAwaiter().GetResult();
+          if (!string.IsNullOrEmpty(pw))
+          {
+            service.EditItemPasswordAsync(id, pw).GetAwaiter().GetResult();
+            SecureClipboardService.CopySensitive(pw);
+          }
+#pragma warning restore VSTHRD002
+        }, "Rotate Password")
+        : new RotatePasswordPage(service, settings, id, item.Name);
+
+      items.Add(new CommandContextItem(rotateCmd)
+      {
+        Title = "Rotate Password",
+        Subtitle = "Generate new password, save to vault, and copy",
+        Icon = new IconInfo("\uE72C"),
+        RequestedShortcut = KeyChordHelpers.FromModifiers(ctrl: true, shift: true, vkey: VirtualKey.R),
       });
     }
   }
