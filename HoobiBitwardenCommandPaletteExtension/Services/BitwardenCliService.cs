@@ -513,6 +513,7 @@ internal sealed class BitwardenCliService
       _cacheLoaded = false;
     }
     SessionStore.Clear();
+    Pages.RepromptPage.ClearGracePeriod();
     StatusChanged?.Invoke();
   }
 
@@ -770,6 +771,7 @@ internal sealed class BitwardenCliService
       _cacheLoaded = false;
     }
     SessionStore.Clear();
+    Pages.RepromptPage.ClearGracePeriod();
     StatusChanged?.Invoke();
 
     try { await RunCliAsync("lock", CliTimeoutMs, "Your vault is locked."); }
@@ -971,6 +973,7 @@ internal sealed class BitwardenCliService
           (!string.IsNullOrEmpty(i.Password) && i.Password!.Length < 8)
           || (!string.IsNullOrEmpty(i.Password) && DateTime.UtcNow - (i.PasswordRevisionDate ?? i.RevisionDate) > TimeSpan.FromDays(365))
           || i.Uris.Any(u => u.Uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))),
+      "protected" or "locked" or "reprompt" => items.Where(i => i.Reprompt == 1),
       _ => items,
     },
     _ => items,

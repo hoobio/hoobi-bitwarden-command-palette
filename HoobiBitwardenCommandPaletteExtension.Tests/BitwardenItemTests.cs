@@ -135,7 +135,7 @@ public class BitwardenItemTests
       Notes = "Secret content that should be hidden",
       Reprompt = 1,
     };
-    Assert.Equal("Protected \u2014 requires master password", item.Subtitle);
+    Assert.Equal("Protected", item.Subtitle);
   }
 
   [Fact]
@@ -158,7 +158,7 @@ public class BitwardenItemTests
       Type = BitwardenItemType.SecureNote,
       Reprompt = 1,
     };
-    Assert.Equal("Protected \u2014 requires master password", item.Subtitle);
+    Assert.Equal("Protected", item.Subtitle);
   }
 
   [Fact]
