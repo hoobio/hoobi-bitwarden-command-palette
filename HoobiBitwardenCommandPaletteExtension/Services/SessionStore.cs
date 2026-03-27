@@ -26,7 +26,15 @@ internal static class SessionStore
     try
     {
       Marshal.Copy(bytes, 0, cred.CredentialBlob, bytes.Length);
-      CredWrite(ref cred, 0);
+      if (!CredWrite(ref cred, 0))
+      {
+        var err = Marshal.GetLastWin32Error();
+        DebugLogService.Log("Session", $"CredWrite failed: Win32 error {err}");
+      }
+      else
+      {
+        DebugLogService.Log("Session", $"Session saved to Credential Manager (target: {TargetName})");
+      }
     }
     finally
     {
@@ -37,7 +45,11 @@ internal static class SessionStore
   public static string? Load()
   {
     if (!CredRead(TargetName, CredTypeGeneric, 0, out var credPtr))
+    {
+      var err = Marshal.GetLastWin32Error();
+      DebugLogService.Log("Session", $"CredRead failed: Win32 error {err} (target: {TargetName})");
       return null;
+    }
 
     try
     {
