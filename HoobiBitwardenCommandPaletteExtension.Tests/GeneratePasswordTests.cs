@@ -1,3 +1,4 @@
+using HoobiBitwardenCommandPaletteExtension.Pages;
 using HoobiBitwardenCommandPaletteExtension.Services;
 
 namespace HoobiBitwardenCommandPaletteExtension.Tests;
@@ -12,6 +13,8 @@ public class GeneratePasswordTests
     svc.SetSession("test-session");
     return (svc, factory);
   }
+
+  private static BitwardenSettingsManager CreateSettings() => new();
 
   [Fact]
   public async Task GeneratePasswordAsync_ReturnsGeneratedPassword()
@@ -125,5 +128,97 @@ public class GeneratePasswordTests
 
     await Assert.ThrowsAsync<InvalidOperationException>(
       () => svc.EditItemPasswordAsync("item-1", "newpass"));
+  }
+
+  [Fact]
+  public void GenerateForm_ShowsPreviewOnOpen()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "PreviewPw!23\n", exitCode: 0));
+
+    var form = new GeneratePasswordForm(svc, CreateSettings());
+
+    Assert.Contains("PreviewPw!23", form.TemplateJson, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GenerateForm_PreviewIsMaskedByDefault()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "PreviewPw!23\n", exitCode: 0));
+
+    var form = new GeneratePasswordForm(svc, CreateSettings());
+
+    // Masked block is visible, revealed block is hidden
+    Assert.Contains("isVisible\": true", form.TemplateJson, StringComparison.Ordinal);
+    Assert.Contains("isVisible\": false", form.TemplateJson, StringComparison.Ordinal);
+    Assert.Contains("\u2022\u2022\u2022\u2022", form.TemplateJson, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void GenerateForm_Refresh_UpdatesPreview()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "Initial0!pass\n", exitCode: 0));  // constructor
+    factory.Enqueue(new FakeCliProcess(stdout: "Updated1!pass\n", exitCode: 0));  // refresh
+
+    var form = new GeneratePasswordForm(svc, CreateSettings());
+    var inputs = """{"_submit":"refresh","Length":20,"Uppercase":"true","Lowercase":"true","Numbers":"true","Special":"true"}""";
+
+    form.SubmitForm(inputs, "");
+
+    Assert.Contains("Updated1!pass", form.TemplateJson, StringComparison.Ordinal);
+    Assert.DoesNotContain("Initial0!pass", form.TemplateJson, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RotateForm_ShowsPreviewOnOpen()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "MySecureP@ss\n", exitCode: 0));
+
+    var form = new RotatePasswordForm(svc, CreateSettings(), "i1", "Test Item");
+
+    Assert.Contains("MySecureP@ss", form.TemplateJson, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RotateForm_SubmitRotate_ShowsSuccessState()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "MySecureP@ss\n", exitCode: 0));  // constructor
+    factory.Enqueue(new FakeCliProcess(stdout: """{"id":"i1","type":1,"login":{"username":"u","password":"old"}}""" + "\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: """{"id":"i1"}""" + "\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "Syncing complete.\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "[]\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "[]\n", exitCode: 0));
+
+    var form = new RotatePasswordForm(svc, CreateSettings(), "i1", "Test Item");
+    var inputs = """{"_submit":"rotate","Length":20,"Uppercase":"true","Lowercase":"true","Numbers":"true","Special":"true"}""";
+
+    form.SubmitForm(inputs, "");
+
+    Assert.Contains("Password Rotated", form.TemplateJson, StringComparison.Ordinal);
+    Assert.Contains("MySecureP@ss", form.TemplateJson, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void RotateForm_SubmitRotate_GuardsAgainstDoubleSubmit()
+  {
+    var (svc, factory) = CreateService();
+    factory.Enqueue(new FakeCliProcess(stdout: "newpass1\n", exitCode: 0));  // constructor
+    factory.Enqueue(new FakeCliProcess(stdout: """{"id":"i1","type":1,"login":{"username":"u","password":"old"}}""" + "\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: """{"id":"i1"}""" + "\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "Syncing complete.\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "[]\n", exitCode: 0));
+    factory.Enqueue(new FakeCliProcess(stdout: "[]\n", exitCode: 0));
+
+    var form = new RotatePasswordForm(svc, CreateSettings(), "i1", "Test Item");
+    var inputs = """{"_submit":"rotate","Length":20,"Uppercase":"true","Lowercase":"true","Numbers":"true","Special":"true"}""";
+
+    form.SubmitForm(inputs, "");
+    form.SubmitForm(inputs, "");  // second call should be a no-op
+
+    Assert.Single(factory.AllArgs, a => a.StartsWith("edit item", StringComparison.Ordinal));
   }
 }

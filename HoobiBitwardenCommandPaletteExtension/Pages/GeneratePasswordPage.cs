@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.CommandPalette.Extensions;
 using Microsoft.CommandPalette.Extensions.Toolkit;
@@ -8,38 +9,61 @@ namespace HoobiBitwardenCommandPaletteExtension.Pages;
 
 internal sealed partial class GeneratePasswordPage : ContentPage
 {
-  private readonly GeneratePasswordForm _form;
+  private readonly BitwardenCliService _service;
+  private readonly BitwardenSettingsManager _settings;
+  private GeneratePasswordForm? _form;
 
   public GeneratePasswordPage(BitwardenCliService service, BitwardenSettingsManager settings)
   {
     Name = "Generate Password";
     Title = "Generate Password";
     Icon = new IconInfo("\uE8D7");
-    _form = new GeneratePasswordForm(service, settings);
+    _service = service;
+    _settings = settings;
   }
 
-  public override IContent[] GetContent() => [_form];
+  public override IContent[] GetContent()
+  {
+    _form ??= new GeneratePasswordForm(_service, _settings);
+    return [_form];
+  }
 }
 
 internal sealed partial class GeneratePasswordForm : FormContent
 {
   private readonly BitwardenCliService _service;
+  private string? _currentPassword;
+
   private readonly BitwardenSettingsManager _settings;
 
   public GeneratePasswordForm(BitwardenCliService service, BitwardenSettingsManager settings)
   {
     _service = service;
     _settings = settings;
-    TemplateJson = BuildTemplate();
+    var length = ParseLength(settings.GeneratorLength.Value);
+    var upper = settings.GeneratorUppercase.Value;
+    var lower = settings.GeneratorLowercase.Value;
+    var numbers = settings.GeneratorNumbers.Value;
+    var special = settings.GeneratorSpecial.Value;
+    _currentPassword = TryGenerate(length, upper, lower, numbers, special);
+    TemplateJson = BuildTemplate(_currentPassword, length, upper, lower, numbers, special);
   }
 
-  private string BuildTemplate()
+  private string? TryGenerate(int length, bool upper, bool lower, bool numbers, bool special)
   {
-    var length = _settings.GeneratorLength.Value ?? "20";
-    var upper = _settings.GeneratorUppercase.Value;
-    var lower = _settings.GeneratorLowercase.Value;
-    var numbers = _settings.GeneratorNumbers.Value;
-    var special = _settings.GeneratorSpecial.Value;
+    try
+    {
+#pragma warning disable VSTHRD002 // SubmitForm and constructor are synchronous SDK callbacks
+      return _service.GeneratePasswordAsync(length, upper, lower, numbers, special).GetAwaiter().GetResult();
+#pragma warning restore VSTHRD002
+    }
+    catch { return null; }
+  }
+
+  private static string BuildTemplate(string? password, int length, bool upper, bool lower, bool numbers, bool special)
+  {
+    var masked = password != null ? new string('\u2022', password.Length) : "\u2022\u2022\u2022\u2022\u2022";
+    var revealed = password != null ? JsonValue.Create(password).ToJsonString() : "\"\"";
 
     return $$"""
     {
@@ -57,20 +81,52 @@ internal sealed partial class GeneratePasswordForm : FormContent
                 "style": "heading"
             },
             {
-                "type": "Input.ChoiceSet",
+                "type": "Container",
+                "style": "emphasis",
+                "items": [
+                    {
+                        "type": "TextBlock",
+                        "id": "passwordMasked",
+                        "text": "{{masked}}",
+                        "fontType": "Monospace",
+                        "wrap": true,
+                        "isVisible": true
+                    },
+                    {
+                        "type": "TextBlock",
+                        "id": "passwordVisible",
+                        "text": {{revealed}},
+                        "fontType": "Monospace",
+                        "wrap": true,
+                        "isVisible": false
+                    }
+                ]
+            },
+            {
+                "type": "ActionSet",
+                "actions": [
+                    {
+                        "type": "Action.ToggleVisibility",
+                        "title": "Reveal / Hide",
+                        "targetElements": ["passwordMasked", "passwordVisible"]
+                    },
+                    {
+                        "type": "Action.Submit",
+                        "title": "↻ Regenerate",
+                        "data": {"_submit": "refresh"}
+                    }
+                ]
+            },
+            {
+                "type": "Input.Number",
                 "id": "Length",
                 "label": "Password Length",
-                "value": "{{length}}",
-                "choices": [
-                    { "title": "8", "value": "8" },
-                    { "title": "12", "value": "12" },
-                    { "title": "16", "value": "16" },
-                    { "title": "20", "value": "20" },
-                    { "title": "24", "value": "24" },
-                    { "title": "32", "value": "32" },
-                    { "title": "48", "value": "48" },
-                    { "title": "64", "value": "64" }
-                ]
+                "value": {{length}},
+                "min": 8,
+                "max": 64,
+                "placeholder": "8–64",
+                "isRequired": true,
+                "errorMessage": "Length must be between 8 and 64"
             },
             {
                 "type": "Input.Toggle",
@@ -109,7 +165,8 @@ internal sealed partial class GeneratePasswordForm : FormContent
                 "actions": [
                     {
                         "type": "Action.Submit",
-                        "title": "Generate & Copy"
+                        "title": "Copy",
+                        "data": {"_submit": "copy"}
                     }
                 ]
             }
@@ -121,32 +178,44 @@ internal sealed partial class GeneratePasswordForm : FormContent
   public override ICommandResult SubmitForm(string inputs, string data)
   {
     var formInput = JsonNode.Parse(inputs)?.AsObject();
-    var length = int.TryParse(formInput?["Length"]?.GetValue<string>(), out var l) ? l : 20;
-    var uppercase = formInput?["Uppercase"]?.GetValue<string>() == "true";
-    var lowercase = formInput?["Lowercase"]?.GetValue<string>() == "true";
+    var submitType = formInput?["_submit"]?.GetValue<string>() ?? "copy";
+    var length = ParseLength(formInput?["Length"]);
+    var upper = formInput?["Uppercase"]?.GetValue<string>() == "true";
+    var lower = formInput?["Lowercase"]?.GetValue<string>() == "true";
     var numbers = formInput?["Numbers"]?.GetValue<string>() == "true";
     var special = formInput?["Special"]?.GetValue<string>() == "true";
 
-    if (!uppercase && !lowercase && !numbers && !special)
+    if (!upper && !lower && !numbers && !special)
       return CommandResult.KeepOpen();
 
-    try
+    if (submitType == "refresh")
     {
-#pragma warning disable VSTHRD002 // SubmitForm is a synchronous SDK callback
-      var password = _service.GeneratePasswordAsync(length, uppercase, lowercase, numbers, special)
-        .GetAwaiter().GetResult();
-#pragma warning restore VSTHRD002
-
-      if (string.IsNullOrEmpty(password))
-        return CommandResult.ShowToast("Failed to generate password");
-
-      SecureClipboardService.CopySensitive(password);
-      return CommandResult.ShowToast("Password copied to clipboard");
+      _currentPassword = TryGenerate(length, upper, lower, numbers, special);
+      TemplateJson = BuildTemplate(_currentPassword, length, upper, lower, numbers, special);
+      return CommandResult.KeepOpen();
     }
-    catch (Exception ex)
-    {
-      DebugLogService.Log("Generate", $"Generate failed: {ex.Message}");
+
+    // copy - use the previewed password, fallback to generating if somehow null
+    if (string.IsNullOrEmpty(_currentPassword))
+      _currentPassword = TryGenerate(length, upper, lower, numbers, special);
+
+    if (string.IsNullOrEmpty(_currentPassword))
       return CommandResult.ShowToast("Failed to generate password");
-    }
+
+    SecureClipboardService.CopySensitive(_currentPassword);
+    return CommandResult.ShowToast("Password copied to clipboard");
   }
+
+  private static int ParseLength(JsonNode? node)
+  {
+    if (node == null) return 20;
+    return Math.Clamp(
+      node.GetValueKind() == JsonValueKind.Number ? node.GetValue<int>()
+        : int.TryParse(node.ToString(), out var l) ? l : 20,
+      8, 64);
+  }
+
+  private static int ParseLength(string? value) =>
+    Math.Clamp(int.TryParse(value, out var l) ? l : 20, 8, 64);
 }
+
