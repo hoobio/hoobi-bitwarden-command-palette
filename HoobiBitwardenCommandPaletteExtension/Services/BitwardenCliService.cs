@@ -493,6 +493,12 @@ internal sealed class BitwardenCliService
       var key = stdout.Trim();
       var valid = !string.IsNullOrEmpty(key) && !key.Contains(' ');
       DebugLogService.Log("Reprompt", $"Password verification: {(valid ? "success" : "failed")}");
+      if (valid)
+      {
+        _sessionKey = key;
+        if (_settings?.RememberSession.Value == true)
+          SessionStore.Save(key);
+      }
       return valid;
     }
     catch (Exception ex)
