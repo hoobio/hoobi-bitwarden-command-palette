@@ -21,7 +21,7 @@ Watchtower tags can be toggled in **Settings > Show Watchtower Tags** (default: 
 On a single item, tags appear in this order:
 
 1. **Recent** (green) - last copied item (pinned 5 minutes)
-2. **Protected** (red) - item requires master password re-prompt
+2. **🔒** (amber) - item requires master password re-prompt (configurable via **Settings > Show Protected Tag**)
 3. **★** (gold) - favorite
 4. **Context** (blue) - matches an open app/browser tab
 5. **2FA / TOTP** (green) - live code or static badge
